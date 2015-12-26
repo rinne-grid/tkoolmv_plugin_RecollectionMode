@@ -75,7 +75,7 @@
      * 設定後
           ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_after.png)
    
-8. [4]で指定したコモンイベントを作成します   
+8. [5]で指定したコモンイベントを作成します   
    * 下記画像のようにコモンイベントの1番目に、回想用イベントを作成します。ここではa.pngとb.pngを画面に表示します
    ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_exp_common_event.png)
 
@@ -85,7 +85,7 @@
    Scene_Recollection.prototype.rngd_exit_scene();
    ```
 
-9. [5]で指定したスイッチをONにするイベントを作成します
+9. [6]で指定したスイッチをONにするイベントを作成します
    * 新たにマップを作成し、下記画像のようにイベントを作成します
       ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_exp_switch_on.png)
    * 設定後のマップイメージ
