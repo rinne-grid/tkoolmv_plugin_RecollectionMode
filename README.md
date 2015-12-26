@@ -22,6 +22,11 @@
 
 ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode.png)
 
+## デモ
+
+[RecollectionMode](http://www.rinscript.sakura.ne.jp/tkool/mv/Project2/)
+
+
 ## サンプルプロジェクトについて
 
 このリポジトリ自体がサンプルプロジェクトとなっております。  
