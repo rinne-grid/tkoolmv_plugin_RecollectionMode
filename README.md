@@ -37,13 +37,13 @@
 
 1. RecollectionMode.jsをダウンロードし、```ツクールプロジェクト/js/plugins/```に配置します
 2. ```ツクールプロジェクト/img/pictures/```に対して、画像ファイルを配置します
-   * 以下のURLの画像を保存し、上記ディレクトリに配置します。   
+   * 以下のリンクの画像を保存し、上記ディレクトリに配置します。   
      [never_watch_picture.png](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/never_watch_picture.png)
    * 加えて、回想モードに利用する画像を用意し、配置します
 ここでは、```a.png```と```b.png```を配置したものとします
 
 3. ```ツクールプロジェクト/audio/bgm```に対して、音楽ファイルを配置します  
-   * 以下のURLの音楽を保存し、上記BGMディレクトリに配置します。  
+   * 以下のリンクの音楽を保存し、上記BGMディレクトリに配置します。  
      [blank_memories.ogg](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/blank_memories.ogg)
 4. RecollectionMode.jsの```60行目```にある```rec_cg_set```に対して、以下の設定を行います
    * picturesに、先ほど配置した画像の指定を行います(.pngの拡張子は省略してください)
@@ -78,7 +78,7 @@
    * 下記画像のようにコモンイベントの1番目に、回想用イベントを作成します。ここではa.pngとb.pngを画面に表示します
    ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_exp_common_event.png)
 
-   * 【！重要！】コモンイベントの一番最後の行に、「スクリプト」として以下の記述を行います
+   * 【！重要！】コモンイベントの一番最後の行に、「スクリプト」として以下の記述を行います  
    ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_plugin_add_script.png)
    ```
    Scene_Recollection.prototype.rngd_exit_scene();
