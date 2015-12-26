@@ -4,6 +4,7 @@
 
 アドベンチャーゲーム等でよく見られる「シーン回想」や「CG閲覧」といった  
 いわゆる「回想モード」機能を追加するプラグインです。
+ツクールMVが届いた嬉しさのあまり、勉強がてら作成してみました。
 
 
 ## スクリーンショット
@@ -91,7 +92,7 @@
       ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_map002.png)      
 
 10. プラグイン管理で、RecollectionMode.jsを有効にします
-   * 下記画像のようにプラグインを有効にします
+   * 下記画像のようにプラグインを有効にします  
       ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_plugin_manage.png)
 
 11. ゲームを起動します。[8]で作成したイベントと会話し、ゲームを「セーブ」してタイトル画面に戻ります。
