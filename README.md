@@ -48,25 +48,25 @@
      [blank_memories.ogg](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/blank_memories.ogg)
 4. RecollectionMode.jsの```60行目```にある```rec_cg_set```に対して、以下の設定を行います
    * picturesに、先ほど配置した画像の指定を行います(.pngの拡張子は省略してください)
-   ```
+   ```javascript
    "pictures": ["a", "b"],
    ```
 5. 回想イベントとして呼び出す「コモンイベント」の番号を指定します
    * common_event_idに1を指定します
-   ```
+   ```javascript
    "common_event_id": 1,
    ```
 
 6. 回想が見れるようになる条件(スイッチ)を指定します
    * switch_idに1を指定します  
    (※自由なスイッチ番号が指定できます。コモンイベント番号と一致している必要はありません)
-   ```
+   ```javascript
    "switch_id": 1
    ```
    
 7. 回想用のマップを設定します
    * ```109行目```にある ```sandbox_map_id``` が1になっていることを確認します  
-   ```
+   ```javascript
    "sandbox_map_id": 1
    ```
    * プロジェクト作成時に存在する「MAP001」の内容を以下のようにクリアします
@@ -81,7 +81,7 @@
 
    * 【！重要！】コモンイベントの一番最後の行に、「スクリプト」として以下の記述を行います  
    ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_plugin_add_script.png)
-   ```
+   ```javascript
    Scene_Recollection.prototype.rngd_exit_scene();
    ```
 
