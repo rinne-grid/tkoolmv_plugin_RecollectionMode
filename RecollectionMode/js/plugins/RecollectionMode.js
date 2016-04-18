@@ -3,6 +3,10 @@
 // Copyright (c) 2015 rinne_grid
 // This plugin is released under the MIT license.
 // http://opensource.org/licenses/mit-license.php
+//
+// Version
+// 1.0.0 2015/12/26 公開
+// 1.1.0 2016/04/19 回想一覧にサムネイルを指定できるように対応
 //=============================================================================
 
 /*:ja
