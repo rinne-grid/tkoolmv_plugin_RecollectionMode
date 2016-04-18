@@ -45,7 +45,7 @@
         //---------------------------------------------------------------------
         "rec_list_window": {
             // 1画面に表示する縦の数
-            "item_height": 3,
+            "item_height": 2,
             // 1画面に表示する横の数
             "item_width" : 2,
             // 1枚のCGに説明テキストを表示するかどうか
@@ -65,7 +65,8 @@
                 "title": "回想シーン1",
                 "pictures": ["room1", "room2"],
                 "common_event_id": 1,
-                "switch_id": 1
+                "switch_id": 1,
+                "thumbnail": "room1_thumbnail"
             },
             2: {
                 "title": "回想シーン2",
@@ -146,31 +147,76 @@
         this.createCommandWindow();
     };
 
+    // 回想モードのカーソル
+    Scene_Recollection.rec_list_index = 0;
+
+    // 回想モードのカーソル
+    Scene_Recollection.reload_rec_list = false;
 
     Scene_Recollection.prototype.createCommandWindow = function() {
 
-        // 回想モード選択ウィンドウ
-        this._rec_window = new Window_RecollectionCommand();
-        this._rec_window.setHandler('select_recollection', this.commandShowRecollection.bind(this));
-        this._rec_window.setHandler('select_cg', this.commandShowCg.bind(this));
-        this._rec_window.setHandler('select_back_title', this.commandBackTitle.bind(this));
-        this.addWindow(this._rec_window);
+        if(Scene_Recollection.reload_rec_list) {
+            // 回想モード選択ウィンドウ
+            this._rec_window = new Window_RecollectionCommand();
+            this._rec_window.setHandler('select_recollection', this.commandShowRecollection.bind(this));
+            this._rec_window.setHandler('select_cg', this.commandShowCg.bind(this));
+            this._rec_window.setHandler('select_back_title', this.commandBackTitle.bind(this));
 
-        // 回想リスト
-        this._rec_list = new Window_RecList(0, 0, Graphics.width, Graphics.height);
-        this._rec_list.visible = false;
-        this._rec_list.setHandler('ok', this.commandDoRecMode.bind(this));
-        this._rec_list.setHandler('cancel', this.commandBackSelectMode.bind(this));
-        this.addWindow(this._rec_list);
+            // リロードの場合：選択ウィンドウを非表示にする。通常はここがtrue
+            this._rec_window.visible = false;
+            this._rec_window.deactivate();
+            this.addWindow(this._rec_window);
 
-        // CG参照用ダミーコマンド
-        this._dummy_window = new Window_Command(0, 0);
-        this._dummy_window.deactivate();
-        this._dummy_window.visible = false;
-        this._dummy_window.setHandler('ok', this.commandDummyOk.bind(this));
-        this._dummy_window.setHandler('cancel', this.commandDummyCancel.bind(this));
-        this._dummy_window.addCommand('next', 'ok');
-        this.addWindow(this._dummy_window);
+            // 回想リスト
+            this._rec_list = new Window_RecList(0, 0, Graphics.width, Graphics.height);
+
+            // リロードの場合：回想リストを表示にする。通常はここがfalse
+            this._rec_list.visible = true;
+            this._rec_list.setHandler('ok', this.commandDoRecMode.bind(this));
+            this._rec_list.setHandler('cancel', this.commandBackSelectMode.bind(this));
+            this._mode = "recollection";
+            this._rec_list.activate();
+            this._rec_list.select(Scene_Recollection.rec_list_index);
+            this._rec_list.opacity = 0;
+
+            this.addWindow(this._rec_list);
+
+            // CG参照用ダミーコマンド
+            this._dummy_window = new Window_Command(0, 0);
+            this._dummy_window.deactivate();
+            this._dummy_window.visible = false;
+            this._dummy_window.setHandler('ok', this.commandDummyOk.bind(this));
+            this._dummy_window.setHandler('cancel', this.commandDummyCancel.bind(this));
+            this._dummy_window.addCommand('next', 'ok');
+            this.addWindow(this._dummy_window);
+
+            Scene_Recollection.reload_rec_list = false;
+
+        } else {
+            // 回想モード選択ウィンドウ
+            this._rec_window = new Window_RecollectionCommand();
+            this._rec_window.setHandler('select_recollection', this.commandShowRecollection.bind(this));
+            this._rec_window.setHandler('select_cg', this.commandShowCg.bind(this));
+            this._rec_window.setHandler('select_back_title', this.commandBackTitle.bind(this));
+            this.addWindow(this._rec_window);
+
+            // 回想リスト
+            this._rec_list = new Window_RecList(0, 0, Graphics.width, Graphics.height);
+            this._rec_list.visible = false;
+            this._rec_list.setHandler('ok', this.commandDoRecMode.bind(this));
+            this._rec_list.setHandler('cancel', this.commandBackSelectMode.bind(this));
+            this._rec_list.select(Scene_Recollection.rec_list_index);
+            this.addWindow(this._rec_list);
+
+            // CG参照用ダミーコマンド
+            this._dummy_window = new Window_Command(0, 0);
+            this._dummy_window.deactivate();
+            this._dummy_window.visible = false;
+            this._dummy_window.setHandler('ok', this.commandDummyOk.bind(this));
+            this._dummy_window.setHandler('cancel', this.commandDummyCancel.bind(this));
+            this._dummy_window.addCommand('next', 'ok');
+            this.addWindow(this._dummy_window);
+        }
 
     };
 
@@ -214,6 +260,7 @@
     // ● 「タイトルに戻る」を選択した際のコマンド
     //-------------------------------------------------------------------------
     Scene_Recollection.prototype.commandBackTitle = function() {
+        Scene_Recollection.rec_list_index = 0;
         SceneManager.goto(Scene_Title);
     };
 
@@ -229,6 +276,7 @@
     //-------------------------------------------------------------------------
     Scene_Recollection.prototype.commandDoRecMode = function() {
         var target_index = this._rec_list.index() + 1;
+        Scene_Recollection.rec_list_index = target_index - 1;
 
         if (this._rec_list.is_valid_picture(this._rec_list.index() + 1)) {
             // 回想モードの場合
@@ -297,6 +345,8 @@
     // コモンイベントから呼び出す関数
     Scene_Recollection.prototype.rngd_exit_scene = function() {
         if(Scene_Recollection._rngd_recollection_doing) {
+            // Window_RecListを表示する
+            Scene_Recollection.reload_rec_list = true;
             SceneManager.push(Scene_Recollection);
         }
     };
@@ -411,7 +461,13 @@
 
         // CGセットのスイッチ番号が、全てのセーブデータを走査した後にTrueであればピクチャ表示
         if(this._global_variables["switches"][rec_cg.switch_id]) {
-            this.drawRecollection(rec_cg.pictures[0], 0, 0,
+
+            var thumbnail_file_name = rec_cg.pictures[0];
+            if(rec_cg.thumbnail !== undefined && rec_cg.thumbnail !== null) {
+                thumbnail_file_name = rec_cg.thumbnail;
+            }
+
+            this.drawRecollection(thumbnail_file_name, 0, 0,
                 this.itemWidth() - 36, this.itemHeight() - 8 - text_height, rect.x + 16, rect.y + 4 +text_height);
 
 
