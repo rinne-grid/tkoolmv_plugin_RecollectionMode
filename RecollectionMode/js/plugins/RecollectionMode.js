@@ -177,7 +177,6 @@
             this._mode = "recollection";
             this._rec_list.activate();
             this._rec_list.select(Scene_Recollection.rec_list_index);
-            this._rec_list.opacity = 0;
 
             this.addWindow(this._rec_list);
 
