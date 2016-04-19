@@ -154,7 +154,7 @@
     // 回想モードのカーソル
     Scene_Recollection.rec_list_index = 0;
 
-    // 回想モードのカーソル
+    // 回想モードの再読み込み判定用 true: コマンドウィンドウを表示せず回想リストを表示 false:コマンドウィンドウを表示
     Scene_Recollection.reload_rec_list = false;
 
     Scene_Recollection.prototype.createCommandWindow = function() {
