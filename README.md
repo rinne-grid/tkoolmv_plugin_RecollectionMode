@@ -9,23 +9,23 @@
 
 ## スクリーンショット
 
-* タイトル画面へのメニューの追加 
+* タイトル画面へのメニューの追加
 
-![スクリーンショット-タイトル](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection00.png)
+![スクリーンショット-タイトル](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection00.png)
 
 
 * 「回想モード」の表示
 
-![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection0.png)
+![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection0.png)
 
 
 * 閲覧する回想を選択
 
-![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode.png)
+![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection_mode.png)
 
 ## デモ
 
-[RecollectionMode](http://www.rinscript.sakura.ne.jp/tkool/mv/Project2/)
+[RecollectionMode](http://www.rinsymbol.sakura.ne.jp/tkool/mv/Project2/)
 
 
 ## サンプルプロジェクトについて
@@ -39,13 +39,13 @@
 1. RecollectionMode.jsをダウンロードし、```ツクールプロジェクト/js/plugins/```に配置します
 2. ```ツクールプロジェクト/img/pictures/``` に対して、画像ファイルを配置します
    * 以下のリンクの画像を保存し、上記ディレクトリに配置します。   
-     [never_watch_picture.png](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/never_watch_picture.png)
+     [never_watch_picture.png](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/never_watch_picture.png)
    * 加えて、回想モードに利用する画像を用意し、配置します
 ここでは、```a.png```と```b.png```を配置したものとします
 
 3.  ```ツクールプロジェクト/audio/bgm``` に対して、音楽ファイルを配置します  
    * 以下のリンクの音楽を保存し、上記BGMディレクトリに配置します。  
-     [blank_memories.ogg](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/blank_memories.ogg)
+     [blank_memories.ogg](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/blank_memories.ogg)
 4. RecollectionMode.jsの```60行目```にある```rec_cg_set```に対して、以下の設定を行います
    * picturesに、先ほど配置した画像の指定を行います(.pngの拡張子は省略してください)
    ```javascript
@@ -67,7 +67,7 @@
    ```javascript
    "switch_id": 1
    ```
-   
+
 7. 回想用のマップを設定します
    * ```109行目```にある ```sandbox_map_id``` が1になっていることを確認します  
    ```javascript
@@ -75,29 +75,29 @@
    ```
    * プロジェクト作成時に存在する「MAP001」の内容を以下のようにクリアします
      * 設定前
-       ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_before.png)
+       ![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection_mode_before.png)
      * 設定後
-          ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_after.png)
-   
+          ![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection_mode_after.png)
+
 8. [5]で指定したコモンイベントを作成します   
    * 下記画像のようにコモンイベントの1番目に、回想用イベントを作成します。ここではa.pngとb.pngを画面に表示します
-   ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_exp_common_event.png)
+   ![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection_mode_exp_common_event.png)
 
    * 【！重要！】コモンイベントの一番最後の行に、「スクリプト」として以下の記述を行います  
-   ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_plugin_add_script.png)
+   ![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection_mode_plugin_add_script.png)
    ```javascript
    Scene_Recollection.prototype.rngd_exit_scene();
    ```
 
 9. [6]で指定したスイッチをONにするイベントを作成します
    * 新たにマップを作成し、下記画像のようにイベントを作成します
-      ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_exp_switch_on.png)
+      ![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection_mode_exp_switch_on.png)
    * 設定後のマップイメージ
-      ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_map002.png)      
+      ![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection_mode_map002.png)      
 
 10. プラグイン管理で、RecollectionMode.jsを有効にします
    * 下記画像のようにプラグインを有効にします  
-      ![スクリーンショット](http://www.rinscript.sakura.ne.jp/tkool/mv/github_images/recollection_mode_plugin_manage.png)
+      ![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection_mode_plugin_manage.png)
 
 11. ゲームを起動します。[9]で作成したイベントと会話し、ゲームを「セーブ」してタイトル画面に戻ります。
     すると、CGと回想が見れる状態となります。
@@ -176,7 +176,7 @@ BGMの変更や表示列、行の変更等が行えます。
 // ★ 回想CG選択ウィンドウの設定を指定します
 //---------------------------------------------------------------------
 "rec_mode_window" : {
-    "x": 260,                           // 
+    "x": 260,                           //
     "y": 180,
     "recollection_title": "回想モード",
     "str_select_recollection": "回想を見る",
@@ -228,4 +228,3 @@ BGMの変更や表示列、行の変更等が行えます。
 
 このプラグインはMITライセンスのもとで公開されています。  
 詳細については、LICENSE.txtをご覧ください。
-
