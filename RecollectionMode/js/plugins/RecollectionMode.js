@@ -7,6 +7,7 @@
 // Version
 // 1.0.0 2015/12/26 公開
 // 1.1.0 2016/04/19 回想一覧にサムネイルを指定できるように対応
+// 1.1.1 2016/05/03 セーブデータ20番目のスイッチが反映されない不具合を修正
 //=============================================================================
 
 /*:ja
@@ -491,7 +492,7 @@
             "switches": {}
         };
         var maxSaveFiles = DataManager.maxSavefiles();
-        for(var i = 0; i < maxSaveFiles; i++) {
+        for(var i = 1; i <= maxSaveFiles; i++) {
             if(DataManager.loadGame(i)) {
                 var rec_cg_max = rngd_hash_size(rngd_recollection_mode_settings.rec_cg_set);
 
