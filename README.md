@@ -23,9 +23,13 @@
 
 ![スクリーンショット](http://www.rinsymbol.sakura.ne.jp/tkool/mv/github_images/recollection_mode.png)
 
-## デモ
+## デモ1: 通常
 
 [RecollectionMode](http://www.rinsymbol.sakura.ne.jp/tkool/mv/Project2/)
+
+## デモ2: 回想スイッチの共有オプションあり
+
+[RecollectionMode-回想スイッチ共有](http://www.rinsymbol.sakura.ne.jp/tkool/mv/Project2-share_switch/)
 
 
 ## サンプルプロジェクトについて
