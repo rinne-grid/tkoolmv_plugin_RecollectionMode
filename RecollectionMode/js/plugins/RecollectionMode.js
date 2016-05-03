@@ -8,6 +8,8 @@
 // 1.0.0 2015/12/26 公開
 // 1.1.0 2016/04/19 回想一覧にサムネイルを指定できるように対応
 // 1.1.1 2016/05/03 セーブデータ20番目のスイッチが反映されない不具合を修正
+//                  セーブデータ間のスイッチ共有オプション
+//                  (share_recollection_switches)を追加
 //=============================================================================
 
 /*:ja
@@ -396,7 +398,12 @@
         // 各セーブデータを参照し、RecollectionMode用のスイッチを検索する
         // スイッチが一つでもONになっている場合は回想をONにする
         for(var i = 1; i <= DataManager.maxSavefiles(); i++) {
-            var data = StorageManager.loadFromLocalFile(i);
+            var data = null;
+            try {
+                data = StorageManager.loadFromLocalFile(i);
+            } catch(e) {
+                data = StorageManager.loadFromWebStorage(i);
+            }
             if(data) {
                 var save_data_obj = JsonEx.parse(data);
                 var rec_cg_max = rngd_hash_size(rngd_recollection_mode_settings.rec_cg_set);
