@@ -115,7 +115,29 @@
         //---------------------------------------------------------------------
         // 通常は何もないマップを指定します
         //---------------------------------------------------------------------
-        "sandbox_map_id": 1
+        "sandbox_map_id": 1,
+        //---------------------------------------------------------------------
+        // ★ 回想用スイッチをセーブデータ間で共有するかどうかを指定します
+        //---------------------------------------------------------------------
+        // パラメータの説明
+        // true:
+        //      回想用スイッチを共有します。
+        //
+        //      例1：セーブ1で回想スイッチ1, 2, 3がONとする
+        //          ニューゲームで開始し、セーブ1を上書きする
+        //          →セーブ1の回想スイッチ1, 2, 3はONのままとなる。
+        //
+        //      例2: セーブ1で回想スイッチ1, 2, 3がONとする
+        //          セーブ1をロードし、セーブ2を保存する
+        //          セーブ2で回想スイッチ1, 2, 3, 7がONとする
+        //          セーブ1, セーブ2それぞれで、回想スイッチ1, 2, 3, 7がONとなる
+        //
+        // false:
+        //      回想用スイッチを共有しません
+        //
+        // すべてのセーブデータを削除した場合にのみ、スイッチがリセットされます
+        //---------------------------------------------------------------------
+        "share_recollection_switches": false
     };
 
     function rngd_hash_size(obj) {
@@ -367,6 +389,28 @@
         win2.activate();
         win2.visible = true;
     };
+    //-------------------------------------------------------------------------
+    // ● セーブ・ロード・ニューゲーム時に必要なスイッチをONにする
+    //-------------------------------------------------------------------------
+    Scene_Recollection.setRecollectionSwitches = function() {
+        // 各セーブデータを参照し、RecollectionMode用のスイッチを検索する
+        // スイッチが一つでもONになっている場合は回想をONにする
+        for(var i = 1; i <= DataManager.maxSavefiles(); i++) {
+            var data = StorageManager.loadFromLocalFile(i);
+            if(data) {
+                var save_data_obj = JsonEx.parse(data);
+                var rec_cg_max = rngd_hash_size(rngd_recollection_mode_settings.rec_cg_set);
+
+                for(var j = 0; j < rec_cg_max; j++) {
+                    var cg = rngd_recollection_mode_settings.rec_cg_set[j+1];
+                    if(save_data_obj["switches"]._data[cg.switch_id] &&
+                        save_data_obj["switches"]._data[cg.switch_id] == true) {
+                        $gameSwitches.setValue(cg.switch_id, true);
+                    }
+                }
+            }
+        }
+    };
 
 //-----------------------------------------------------------------------------
 // ◆ Window関数
@@ -558,5 +602,53 @@
         Scene_Title_createCommandWindow.call(this);
         this._commandWindow.setHandler('recollection', this.commandRecollection.bind(this));
     };
+
+    // セーブデータ共有オプションが指定されている場合のみ、カスタマイズ
+    if(rngd_recollection_mode_settings["share_recollection_switches"]) {
+        DataManager.makeSaveContents = function() {
+            // A save data does not contain $gameTemp, $gameMessage, and $gameTroop.
+
+            Scene_Recollection.setRecollectionSwitches();
+
+            var contents = {};
+            contents.system       = $gameSystem;
+            contents.screen       = $gameScreen;
+            contents.timer        = $gameTimer;
+            contents.switches     = $gameSwitches;
+            contents.variables    = $gameVariables;
+            contents.selfSwitches = $gameSelfSwitches;
+            contents.actors       = $gameActors;
+            contents.party        = $gameParty;
+            contents.map          = $gameMap;
+            contents.player       = $gamePlayer;
+
+            return contents;
+        };
+
+        DataManager.extractSaveContents = function(contents) {
+            $gameSystem        = contents.system;
+            $gameScreen        = contents.screen;
+            $gameTimer         = contents.timer;
+            $gameSwitches      = contents.switches;
+            $gameVariables     = contents.variables;
+            $gameSelfSwitches  = contents.selfSwitches;
+            $gameActors        = contents.actors;
+            $gameParty         = contents.party;
+            $gameMap           = contents.map;
+            $gamePlayer        = contents.player;
+
+            Scene_Recollection.setRecollectionSwitches();
+        };
+
+        DataManager.setupNewGame = function() {
+            this.createGameObjects();
+            Scene_Recollection.setRecollectionSwitches();
+            this.selectSavefileForNewGame();
+            $gameParty.setupStartingMembers();
+            $gamePlayer.reserveTransfer($dataSystem.startMapId,
+                $dataSystem.startX, $dataSystem.startY);
+            Graphics.frameCount = 0;
+        };
+    }
 
 })();
