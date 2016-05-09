@@ -10,6 +10,7 @@
 // 1.1.1 2016/05/03 セーブデータ20番目のスイッチが反映されない不具合を修正
 //                  セーブデータ間のスイッチ共有オプション
 //                  (share_recollection_switches)を追加
+// 1.1.2 2016/05/09 回想用のCGリストのキーを数字から文字列に変更
 //=============================================================================
 
 /*:ja
@@ -68,44 +69,44 @@
         // ★ 回想用のCGを指定します
         //---------------------------------------------------------------------
         "rec_cg_set": {
-            1: {
+            "1": {
                 "title": "回想シーン1",
                 "pictures": ["room1", "room2"],
                 "common_event_id": 1,
                 "switch_id": 1,
                 "thumbnail": "room1_thumbnail"
             },
-            2: {
+            "2": {
                 "title": "回想シーン2",
                 "pictures": ["background1_22", "background1_24"],
                 "common_event_id": 2,
                 "switch_id": 2
             },
-            3: {
+            "3": {
                 "title": "回想シーン3",
                 "pictures": ["background1_29"],
                 "common_event_id": 3,
                 "switch_id": 3
             },
-            4: {
+            "4": {
                 "title": "回想シーン4",
                 "pictures": ["background1_30"],
                 "common_event_id": 4,
                 "switch_id": 4
             },
-            5: {
+            "5": {
                 "title": "回想シーン5",
                 "pictures": ["background1_39", "background1_40"],
                 "common_event_id": 5,
                 "switch_id": 5
             },
-            6: {
+            "6": {
                 "title": "回想シーン6",
                 "pictures": ["background1_41"],
                 "common_event_id": 6,
                 "switch_id": 6
             },
-            7: {
+            "7": {
                 "title": "回想シーン7",
                 "pictures": ["background1_42"],
                 "common_event_id": 7,
