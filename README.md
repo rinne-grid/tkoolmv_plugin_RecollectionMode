@@ -299,6 +299,13 @@ BGMの変更や表示列、行の変更等が行えます。
 |タイトル画面スルーパッチ|タイトル画面から、回想モードに直接飛ぶようにする|[タイトル画面スルーパッチ](https://gist.github.com/rinne-grid/afb54cdee4f8c510fe611452c4517650)|
 
 
+### 補助ツール
+
+[RecoGene](http://rinsymbol.sakura.ne.jp/tkoolmv/RecoGene/)
+
+* Web画面上でCG設定を入力し、設定済みのプラグインをダウンロードできます。
+* 既存のRecollectionMode.js(バージョン.1.1.2以降)ファイルから、設定を読み込み、編集することも可能です。
+
 ### 作者について
 
 [@rinne_grid](https://twitter.com/rinne_grid)
