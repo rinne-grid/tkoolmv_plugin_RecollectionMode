@@ -11,6 +11,7 @@
 //                  セーブデータ間のスイッチ共有オプション
 //                  (share_recollection_switches)を追加
 // 1.1.2 2016/05/09 回想用のCGリストのキーを数字から文字列に変更
+// 1.1.3 2016/11/23 セーブデータが増えた場合にロード時間が長くなる問題を解消
 //=============================================================================
 
 /*:ja
@@ -545,7 +546,7 @@
         };
         var maxSaveFiles = DataManager.maxSavefiles();
         for(var i = 1; i <= maxSaveFiles; i++) {
-            if(DataManager.loadGame(i)) {
+            if(DataManager.loadGameSwitch(i)) {
                 var rec_cg_max = rngd_hash_size(rngd_recollection_mode_settings.rec_cg_set);
 
                 for(var j = 0; j < rec_cg_max; j++) {
@@ -658,5 +659,42 @@
             Graphics.frameCount = 0;
         };
     }
+
+//-----------------------------------------------------------------------------
+// ◆ DataManager関数
+//-----------------------------------------------------------------------------
+
+    //-------------------------------------------------------------------------
+    // ● スイッチのみロードする
+    //-------------------------------------------------------------------------
+    DataManager.loadGameSwitch = function(savefileId) {
+        try {
+            return this.loadGameSwitchWithoutRescue(savefileId);
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    };
+
+    DataManager.loadGameSwitchWithoutRescue = function(savefileId) {
+        var globalInfo = this.loadGlobalInfo();
+        if (this.isThisGameFile(savefileId)) {
+            var json = StorageManager.load(savefileId);
+            this.createGameObjectSwitch();
+            this.extractSaveContentsSwitches(JsonEx.parse(json));
+            //this._lastAccessedId = savefileId;
+            return true;
+        } else {
+            return false;
+        }
+    };
+
+    DataManager.createGameObjectSwitch = function() {
+        $gameSwitches      = new Game_Switches();
+    };
+
+    DataManager.extractSaveContentsSwitches = function(contents) {
+        $gameSwitches      = contents.switches;
+    };
 
 })();
