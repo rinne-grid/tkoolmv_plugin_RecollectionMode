@@ -12,6 +12,7 @@
 //                  (share_recollection_switches)を追加
 // 1.1.2 2016/05/09 回想用のCGリストのキーを数字から文字列に変更
 // 1.1.3 2016/11/23 セーブデータが増えた場合にロード時間が長くなる問題を解消
+// 1.1.4 2016/12/23 CG閲覧時にクリック・タップで画像送りができるよう対応
 //=============================================================================
 
 /*:ja
@@ -241,6 +242,7 @@
             // CG参照用ダミーコマンド
             this._dummy_window = new Window_Command(0, 0);
             this._dummy_window.deactivate();
+            this._dummy_window.playOkSound = function(){}; // CGﾓｰﾄﾞの場合、OK音を鳴らさない
             this._dummy_window.visible = false;
             this._dummy_window.setHandler('ok', this.commandDummyOk.bind(this));
             this._dummy_window.setHandler('cancel', this.commandDummyCancel.bind(this));
@@ -330,7 +332,13 @@
 
                 // シーン画像をロードする
                 rngd_recollection_mode_settings.rec_cg_set[target_index].pictures.forEach(function (name) {
-                    var sp = new Sprite();
+                    // CGクリックを可能とする
+                    var sp = new Sprite_Button();
+                    sp.setClickHandler(this.commandDummyOk.bind(this));
+                    sp.processTouch = function() {
+                        Sprite_Button.prototype.processTouch.call(this);
+
+                    };
                     sp.bitmap = ImageManager.loadPicture(name);
                     // 最初のSprite以外は見えないようにする
                     if (this._cg_sprites.length > 0) {
@@ -357,9 +365,11 @@
             this._cg_sprites[this._cg_sprites_index].visible = false;
             this._cg_sprites_index++;
             this._cg_sprites[this._cg_sprites_index].visible = true;
+            SoundManager.playOk();
 
             this._dummy_window.activate();
         } else {
+            SoundManager.playOk();
             this.commandDummyCancel();
         }
     };
