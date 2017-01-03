@@ -1,5 +1,5 @@
 //=============================================================================
-// RecollectionMode_through_command_patch.js
+// RecollectionMode_through_command_cg_only_patch.js
 
 // RecollectionMode(https://github.com/rinne-grid/tkoolmv_plugin_RecollectionMode)
 // Copyright (c) 2016 rinne_grid
@@ -8,7 +8,7 @@
 //=============================================================================
 
 /*:ja
- * @plugindesc RecollectionModeのパッチです。タイトルから直接回想閲覧に遷移します
+ * @plugindesc RecollectionModeのパッチです。タイトルから直接CG閲覧に遷移します
  * @author rinne_grid
  *
  *
@@ -42,7 +42,7 @@
         this._rec_list.visible = true;
         this._rec_list.setHandler('ok', this.commandDoRecMode.bind(this));
         this._rec_list.setHandler('cancel', this.commandBackSelectMode.bind(this));
-        this._mode = "recollection";
+        this._mode = "cg";
         this._rec_list.activate();
         this._rec_list.select(Scene_Recollection.rec_list_index);
         this._rec_list.opacity = 0;
