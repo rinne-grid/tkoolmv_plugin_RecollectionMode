@@ -13,6 +13,7 @@
 // 1.1.2 2016/05/09 回想用のCGリストのキーを数字から文字列に変更
 // 1.1.3 2016/11/23 セーブデータが増えた場合にロード時間が長くなる問題を解消
 // 1.1.4 2016/12/23 CG閲覧時にクリック・タップで画像送りができるよう対応
+// 1.1.5 2017/01/26 CG・シーンで一部サムネイルが表示されない問題を解消
 //=============================================================================
 
 /*:ja
@@ -194,7 +195,7 @@
             this._rec_window.setHandler('select_cg', this.commandShowCg.bind(this));
             this._rec_window.setHandler('select_back_title', this.commandBackTitle.bind(this));
 
-            // リロードの場合：選択ウィンドウを非表示にする。通常はここがtrue
+            // リロードの場合：選択ウィンドウを非表示にする
             this._rec_window.visible = false;
             this._rec_window.deactivate();
             this.addWindow(this._rec_window);
@@ -202,7 +203,7 @@
             // 回想リスト
             this._rec_list = new Window_RecList(0, 0, Graphics.width, Graphics.height);
 
-            // リロードの場合：回想リストを表示にする。通常はここがfalse
+            // リロードの場合：回想リストを表示にする
             this._rec_list.visible = true;
             this._rec_list.setHandler('ok', this.commandDoRecMode.bind(this));
             this._rec_list.setHandler('cancel', this.commandBackSelectMode.bind(this));
@@ -495,9 +496,9 @@
         return (this.height - this.standardPadding()) / rngd_recollection_mode_settings.rec_list_window.item_height;
     };
 
-    //Window_RecList.prototype.maxRows = function() {
-    //    return rngd_recollection_mode_settings.rec_list_window.item_height;
-    //};
+    Window_RecList.prototype.maxPageItems = function() {
+        return rngd_hash_size(rngd_recollection_mode_settings.rec_cg_set);
+    };
 
     Window_RecList.prototype.maxCols = function() {
         return rngd_recollection_mode_settings.rec_list_window.item_width;
@@ -509,8 +510,6 @@
     };
 
     Window_RecList.prototype.drawItem = function(index) {
-        // TODO: itemWidthにあわせたサイズに拡大・縮小する
-        // 1番目のCGセットを取得
         var rec_cg = rngd_recollection_mode_settings.rec_cg_set[index+1];
         var rect = this.itemRect(index);
         var text_height = 0;
