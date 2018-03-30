@@ -1,5 +1,5 @@
 //=============================================================================
-// rpg_core.js
+// rpg_core.js v1.5.2
 //=============================================================================
 
 //-----------------------------------------------------------------------------
@@ -76,49 +76,58 @@ Number.prototype.padZero = function(length){
     return String(this).padZero(length);
 };
 
-/**
- * Checks whether the two arrays are same.
- *
- * @method Array.prototype.equals
- * @param {Array} array The array to compare to
- * @return {Boolean} True if the two arrays are same
- */
-Array.prototype.equals = function(array) {
-    if (!array || this.length !== array.length) {
-        return false;
-    }
-    for (var i = 0; i < this.length; i++) {
-        if (this[i] instanceof Array && array[i] instanceof Array) {
-            if (!this[i].equals(array[i])) {
+Object.defineProperties(Array.prototype, {
+    /**
+     * Checks whether the two arrays are same.
+     *
+     * @method Array.prototype.equals
+     * @param {Array} array The array to compare to
+     * @return {Boolean} True if the two arrays are same
+     */
+    equals: {
+        enumerable: false,
+        value: function(array) {
+            if (!array || this.length !== array.length) {
                 return false;
             }
-        } else if (this[i] !== array[i]) {
-            return false;
+            for (var i = 0; i < this.length; i++) {
+                if (this[i] instanceof Array && array[i] instanceof Array) {
+                    if (!this[i].equals(array[i])) {
+                        return false;
+                    }
+                } else if (this[i] !== array[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    },
+    /**
+     * Makes a shallow copy of the array.
+     *
+     * @method Array.prototype.clone
+     * @return {Array} A shallow copy of the array
+     */
+    clone: {
+        enumerable: false,
+        value: function() {
+            return this.slice(0);
+        }
+    },
+    /**
+     * Checks whether the array contains a given element.
+     *
+     * @method Array.prototype.contains
+     * @param {Any} element The element to search for
+     * @return {Boolean} True if the array contains a given element
+     */
+    contains : {
+        enumerable: false,
+        value: function(element) {
+            return this.indexOf(element) >= 0;
         }
     }
-    return true;
-};
-
-/**
- * Makes a shallow copy of the array.
- *
- * @method Array.prototype.clone
- * @return {Array} A shallow copy of the array
- */
-Array.prototype.clone = function() {
-    return this.slice(0);
-};
-
-/**
- * Checks whether the array contains a given element.
- *
- * @method Array.prototype.contains
- * @param {Any} element The element to search for
- * @return {Boolean} True if the array contains a given element
- */
-Array.prototype.contains = function(element) {
-    return this.indexOf(element) >= 0;
-};
+});
 
 /**
  * Checks whether the string contains a given string.
@@ -162,6 +171,16 @@ function Utils() {
  * @final
  */
 Utils.RPGMAKER_NAME = 'MV';
+
+/**
+ * The version of the RPG Maker.
+ *
+ * @static
+ * @property RPGMAKER_VERSION
+ * @type String
+ * @final
+ */
+Utils.RPGMAKER_VERSION = "1.5.2";
 
 /**
  * Checks whether the option is in the query string.
@@ -261,6 +280,333 @@ Utils.rgbToCssColor = function(r, g, b) {
     return 'rgb(' + r + ',' + g + ',' + b + ')';
 };
 
+Utils._id = 1;
+Utils.generateRuntimeId = function(){
+    return Utils._id++;
+};
+
+Utils._supportPassiveEvent = null;
+/**
+ * Test this browser support passive event feature
+ * 
+ * @static
+ * @method isSupportPassiveEvent
+ * @return {Boolean} this browser support passive event or not
+ */
+Utils.isSupportPassiveEvent = function() {
+    if (typeof Utils._supportPassiveEvent === "boolean") {
+        return Utils._supportPassiveEvent;
+    }
+    // test support passive event
+    // https://github.com/WICG/EventListenerOptions/blob/gh-pages/explainer.md#feature-detection
+    var passive = false;
+    var options = Object.defineProperty({}, "passive", {
+        get: function() { passive = true; }
+    });
+    window.addEventListener("test", null, options);
+    Utils._supportPassiveEvent = passive;
+    return passive;
+}
+
+//-----------------------------------------------------------------------------
+/**
+ * The resource class. Allows to be collected as a garbage if not use for some time or ticks
+ *
+ * @class CacheEntry
+ * @constructor
+ * @param {ResourceManager} resource manager
+ * @param {string} key, url of the resource
+ * @param {string} item - Bitmap, HTML5Audio, WebAudio - whatever you want to store in the cache
+ */
+function CacheEntry(cache, key, item) {
+    this.cache = cache;
+    this.key = key;
+    this.item = item;
+    this.cached = false;
+    this.touchTicks = 0;
+    this.touchSeconds = 0;
+    this.ttlTicks = 0;
+    this.ttlSeconds = 0;
+    this.freedByTTL = false;
+}
+
+/**
+ * frees the resource
+ */
+CacheEntry.prototype.free = function (byTTL) {
+    this.freedByTTL = byTTL || false;
+    if (this.cached) {
+        this.cached = false;
+        delete this.cache._inner[this.key];
+    }
+};
+
+/**
+ * Allocates the resource
+ * @returns {CacheEntry}
+ */
+CacheEntry.prototype.allocate = function () {
+    if (!this.cached) {
+        this.cache._inner[this.key] = this;
+        this.cached = true;
+    }
+    this.touch();
+    return this;
+};
+
+/**
+ * Sets the time to live
+ * @param {number} ticks TTL in ticks, 0 if not set
+ * @param {number} time TTL in seconds, 0 if not set
+ * @returns {CacheEntry}
+ */
+CacheEntry.prototype.setTimeToLive = function (ticks, seconds) {
+    this.ttlTicks = ticks || 0;
+    this.ttlSeconds = seconds || 0;
+    return this;
+};
+
+CacheEntry.prototype.isStillAlive = function () {
+    var cache = this.cache;
+    return ((this.ttlTicks == 0) || (this.touchTicks + this.ttlTicks < cache.updateTicks )) &&
+        ((this.ttlSeconds == 0) || (this.touchSeconds + this.ttlSeconds < cache.updateSeconds ));
+};
+
+/**
+ * makes sure that resource wont freed by Time To Live
+ * if resource was already freed by TTL, put it in cache again
+ */
+CacheEntry.prototype.touch = function () {
+    var cache = this.cache;
+    if (this.cached) {
+        this.touchTicks = cache.updateTicks;
+        this.touchSeconds = cache.updateSeconds;
+    } else if (this.freedByTTL) {
+        this.freedByTTL = false;
+        if (!cache._inner[this.key]) {
+            cache._inner[this.key] = this;
+        }
+    }
+};
+
+/**
+ * Cache for images, audio, or any other kind of resource
+ * @param manager
+ * @constructor
+ */
+function CacheMap(manager) {
+    this.manager = manager;
+    this._inner = {};
+    this._lastRemovedEntries = {};
+    this.updateTicks = 0;
+    this.lastCheckTTL = 0;
+    this.delayCheckTTL = 100.0;
+    this.updateSeconds = Date.now();
+}
+
+/**
+ * checks ttl of all elements and removes dead ones
+ */
+CacheMap.prototype.checkTTL = function () {
+    var cache = this._inner;
+    var temp = this._lastRemovedEntries;
+    if (!temp) {
+        temp = [];
+        this._lastRemovedEntries = temp;
+    }
+    for (var key in cache) {
+        var entry = cache[key];
+        if (!entry.isStillAlive()) {
+            temp.push(entry);
+        }
+    }
+    for (var i = 0; i < temp.length; i++) {
+        temp[i].free(true);
+    }
+    temp.length = 0;
+};
+
+/**
+ * cache item
+ * @param key url of cache element
+ * @returns {*|null}
+ */
+CacheMap.prototype.getItem = function (key) {
+    var entry = this._inner[key];
+    if (entry) {
+        return entry.item;
+    }
+    return null;
+};
+
+CacheMap.prototype.clear = function () {
+    var keys = Object.keys(this._inner);
+    for (var i = 0; i < keys.length; i++) {
+        this._inner[keys[i]].free();
+    }
+};
+
+CacheMap.prototype.setItem = function (key, item) {
+    return new CacheEntry(this, key, item).allocate();
+};
+
+CacheMap.prototype.update = function(ticks, delta) {
+    this.updateTicks += ticks;
+    this.updateSeconds += delta;
+    if (this.updateSeconds >= this.delayCheckTTL + this.lastCheckTTL) {
+        this.lastCheckTTL = this.updateSeconds;
+        this.checkTTL();
+    }
+};
+
+function ImageCache(){
+    this.initialize.apply(this, arguments);
+}
+
+ImageCache.limit = 10 * 1000 * 1000;
+
+ImageCache.prototype.initialize = function(){
+    this._items = {};
+};
+
+ImageCache.prototype.add = function(key, value){
+    this._items[key] = {
+        bitmap: value,
+        touch: Date.now(),
+        key: key
+    };
+
+    this._truncateCache();
+};
+
+ImageCache.prototype.get = function(key){
+    if(this._items[key]){
+        var item = this._items[key];
+        item.touch = Date.now();
+        return item.bitmap;
+    }
+
+    return null;
+};
+
+ImageCache.prototype.reserve = function(key, value, reservationId){
+    if(!this._items[key]){
+        this._items[key] = {
+            bitmap: value,
+            touch: Date.now(),
+            key: key
+        };
+    }
+
+    this._items[key].reservationId = reservationId;
+};
+
+ImageCache.prototype.releaseReservation = function(reservationId){
+    var items = this._items;
+
+    Object.keys(items)
+        .map(function(key){return items[key];})
+        .forEach(function(item){
+            if(item.reservationId === reservationId){
+                delete item.reservationId;
+            }
+        });
+};
+
+ImageCache.prototype._truncateCache = function(){
+    var items = this._items;
+    var sizeLeft = ImageCache.limit;
+
+    Object.keys(items).map(function(key){
+        return items[key];
+    }).sort(function(a, b){
+        return b.touch - a.touch;
+    }).forEach(function(item){
+        if(sizeLeft > 0 || this._mustBeHeld(item)){
+            var bitmap = item.bitmap;
+            sizeLeft -= bitmap.width * bitmap.height;
+        }else{
+            delete items[item.key];
+        }
+    }.bind(this));
+};
+
+ImageCache.prototype._mustBeHeld = function(item){
+    // request only is weak so It's purgeable
+    if(item.bitmap.isRequestOnly()) return false;
+    // reserved item must be held
+    if(item.reservationId) return true;
+    // not ready bitmap must be held (because of checking isReady())
+    if(!item.bitmap.isReady()) return true;
+    // then the item may purgeable
+    return false;
+};
+
+ImageCache.prototype.isReady = function(){
+    var items = this._items;
+    return !Object.keys(items).some(function(key){
+        return !items[key].bitmap.isRequestOnly() && !items[key].bitmap.isReady();
+    });
+};
+
+ImageCache.prototype.getErrorBitmap = function(){
+    var items = this._items;
+    var bitmap = null;
+    if(Object.keys(items).some(function(key){
+            if(items[key].bitmap.isError()){
+                bitmap = items[key].bitmap;
+                return true;
+            }
+            return false;
+        })) {
+        return bitmap;
+    }
+
+    return null;
+};
+function RequestQueue(){
+    this.initialize.apply(this, arguments);
+}
+
+RequestQueue.prototype.initialize = function(){
+    this._queue = [];
+};
+
+RequestQueue.prototype.enqueue = function(key, value){
+    this._queue.push({
+        key: key,
+        value: value,
+    });
+};
+
+RequestQueue.prototype.update = function(){
+    if(this._queue.length === 0) return;
+
+    var top = this._queue[0];
+    if(top.value.isRequestReady()){
+        this._queue.shift();
+        if(this._queue.length !== 0){
+            this._queue[0].value.startRequest();
+        }
+    }else{
+        top.value.startRequest();
+    }
+};
+
+RequestQueue.prototype.raisePriority = function(key){
+    for(var n = 0; n < this._queue.length; n++){
+        var item = this._queue[n];
+        if(item.key === key){
+            this._queue.splice(n, 1);
+            this._queue.unshift(item);
+            break;
+        }
+    }
+};
+
+RequestQueue.prototype.clear = function(){
+    this._queue.splice(0);
+};
 //-----------------------------------------------------------------------------
 /**
  * The point class.
@@ -366,20 +712,137 @@ function Bitmap() {
     this.initialize.apply(this, arguments);
 }
 
+//for iOS. img consumes memory. so reuse it.
+Bitmap._reuseImages = [];
+
+
+/**
+ * Bitmap states(Bitmap._loadingState):
+ *
+ * none:
+ * Empty Bitmap
+ *
+ * pending:
+ * Url requested, but pending to load until startRequest called
+ *
+ * purged:
+ * Url request completed and purged.
+ *
+ * requesting:
+ * Requesting supplied URI now.
+ *
+ * requestCompleted:
+ * Request completed
+ *
+ * decrypting:
+ * requesting encrypted data from supplied URI or decrypting it.
+ *
+ * decryptCompleted:
+ * Decrypt completed
+ *
+ * loaded:
+ * loaded. isReady() === true, so It's usable.
+ *
+ * error:
+ * error occurred
+ *
+ */
+
+
+Bitmap.prototype._createCanvas = function(width, height){
+    this.__canvas = this.__canvas || document.createElement('canvas');
+    this.__context = this.__canvas.getContext('2d');
+
+    this.__canvas.width = Math.max(width || 0, 1);
+    this.__canvas.height = Math.max(height || 0, 1);
+
+    if(this._image){
+        var w = Math.max(this._image.width || 0, 1);
+        var h = Math.max(this._image.height || 0, 1);
+        this.__canvas.width = w;
+        this.__canvas.height = h;
+        this._createBaseTexture(this._canvas);
+
+        this.__context.drawImage(this._image, 0, 0);
+    }
+
+    this._setDirty();
+};
+
+Bitmap.prototype._createBaseTexture = function(source){
+    this.__baseTexture = new PIXI.BaseTexture(source);
+    this.__baseTexture.mipmap = false;
+    this.__baseTexture.width = source.width;
+    this.__baseTexture.height = source.height;
+
+    if (this._smooth) {
+        this._baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+    } else {
+        this._baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    }
+};
+
+Bitmap.prototype._clearImgInstance = function(){
+    this._image.src = "";
+    this._image.onload = null;
+    this._image.onerror = null;
+    this._errorListener = null;
+    this._loadListener = null;
+
+    Bitmap._reuseImages.push(this._image);
+    this._image = null;
+};
+
+//
+//We don't want to waste memory, so creating canvas is deferred.
+//
+Object.defineProperties(Bitmap.prototype, {
+    _canvas: {
+        get: function(){
+            if(!this.__canvas)this._createCanvas();
+            return this.__canvas;
+        }
+    },
+    _context: {
+        get: function(){
+            if(!this.__context)this._createCanvas();
+            return this.__context;
+        }
+    },
+
+    _baseTexture: {
+        get: function(){
+            if(!this.__baseTexture) this._createBaseTexture(this._image || this.__canvas);
+            return this.__baseTexture;
+        }
+    }
+});
+
+Bitmap.prototype._renewCanvas = function(){
+    var newImage = this._image;
+    if(newImage && this.__canvas && (this.__canvas.width < newImage.width || this.__canvas.height < newImage.height)){
+        this._createCanvas();
+    }
+};
+
 Bitmap.prototype.initialize = function(width, height) {
-    this._canvas = document.createElement('canvas');
-    this._context = this._canvas.getContext('2d');
-    this._canvas.width = Math.max(width || 0, 1);
-    this._canvas.height = Math.max(height || 0, 1);
-    this._baseTexture = new PIXI.BaseTexture(this._canvas);
-    this._baseTexture.scaleMode = PIXI.scaleModes.NEAREST;
+    if(!this._defer){
+        this._createCanvas(width, height);
+    }
+
     this._image = null;
     this._url = '';
     this._paintOpacity = 255;
     this._smooth = false;
     this._loadListeners = [];
-    this._isLoading = false;
-    this._hasError = false;
+    this._loadingState = 'none';
+    this._decodeAfterRequest = false;
+
+    /**
+     * Cache entry, for images. In all cases _url is the same as cacheEntry.key
+     * @type CacheEntry
+     */
+    this.cacheEntry = null;
 
     /**
      * The face name of the font.
@@ -439,13 +902,13 @@ Bitmap.prototype.initialize = function(width, height) {
  * @return Bitmap
  */
 Bitmap.load = function(url) {
-    var bitmap = new Bitmap();
-    bitmap._image = new Image();
-    bitmap._image.src = url;
-    bitmap._image.onload = Bitmap.prototype._onLoad.bind(bitmap);
-    bitmap._image.onerror = Bitmap.prototype._onError.bind(bitmap);
-    bitmap._url = url;
-    bitmap._isLoading = true;
+    var bitmap = Object.create(Bitmap.prototype);
+    bitmap._defer = true;
+    bitmap.initialize();
+
+    bitmap._decodeAfterRequest = true;
+    bitmap._requestImage(url);
+
     return bitmap;
 };
 
@@ -462,23 +925,21 @@ Bitmap.snap = function(stage) {
     var height = Graphics.height;
     var bitmap = new Bitmap(width, height);
     var context = bitmap._context;
-    var renderTexture = new PIXI.RenderTexture(width, height);
+    var renderTexture = PIXI.RenderTexture.create(width, height);
     if (stage) {
-        renderTexture.render(stage);
+        Graphics._renderer.render(stage, renderTexture);
         stage.worldTransform.identity();
-    }
-    if (Graphics.isWebGL()) {
-        var gl =  renderTexture.renderer.gl;
-        var webGLPixels = new Uint8Array(4 * width * height);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, renderTexture.textureBuffer.frameBuffer);
-        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, webGLPixels);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        var canvasData = context.getImageData(0, 0, width, height);
-        canvasData.data.set(webGLPixels);
-        context.putImageData(canvasData, 0, 0);
+        var canvas = null;
+        if (Graphics.isWebGL()) {
+            canvas = Graphics._renderer.extract.canvas(renderTexture);
+        } else {
+            canvas = renderTexture.baseTexture._canvasRenderTarget.canvas;
+        }
+        context.drawImage(canvas, 0, 0);
     } else {
-        context.drawImage(renderTexture.textureBuffer.canvas, 0, 0);
+
     }
+    renderTexture.destroy({ destroyBase: true });
     bitmap._setDirty();
     return bitmap;
 };
@@ -490,7 +951,7 @@ Bitmap.snap = function(stage) {
  * @return {Boolean} True if the bitmap is ready to render
  */
 Bitmap.prototype.isReady = function() {
-    return !this._isLoading;
+    return this._loadingState === 'loaded' || this._loadingState === 'none';
 };
 
 /**
@@ -500,7 +961,17 @@ Bitmap.prototype.isReady = function() {
  * @return {Boolean} True if a loading error has occurred
  */
 Bitmap.prototype.isError = function() {
-    return this._hasError;
+    return this._loadingState === 'error';
+};
+
+/**
+ * touch the resource
+ * @method touch
+ */
+Bitmap.prototype.touch = function() {
+    if (this.cacheEntry) {
+        this.cacheEntry.touch();
+    }
 };
 
 /**
@@ -563,7 +1034,11 @@ Object.defineProperty(Bitmap.prototype, 'context', {
  */
 Object.defineProperty(Bitmap.prototype, 'width', {
     get: function() {
-        return this._isLoading ? 0 : this._canvas.width;
+        if(this.isReady()){
+            return this._image? this._image.width: this._canvas.width;
+        }
+
+        return 0;
     },
     configurable: true
 });
@@ -576,7 +1051,11 @@ Object.defineProperty(Bitmap.prototype, 'width', {
  */
 Object.defineProperty(Bitmap.prototype, 'height', {
     get: function() {
-        return this._isLoading ? 0 : this._canvas.height;
+        if(this.isReady()){
+            return this._image? this._image.height: this._canvas.height;
+        }
+
+        return 0;
     },
     configurable: true
 });
@@ -607,10 +1086,12 @@ Object.defineProperty(Bitmap.prototype, 'smooth', {
     set: function(value) {
         if (this._smooth !== value) {
             this._smooth = value;
-            if (this._smooth) {
-                this._baseTexture.scaleMode = PIXI.scaleModes.LINEAR;
-            } else {
-                this._baseTexture.scaleMode = PIXI.scaleModes.NEAREST;
+            if(this.__baseTexture){
+                if (this._smooth) {
+                    this._baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+                } else {
+                    this._baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+                }
             }
         }
     },
@@ -678,6 +1159,31 @@ Bitmap.prototype.blt = function(source, sx, sy, sw, sh, dx, dy, dw, dh) {
 };
 
 /**
+ * Performs a block transfer, using assumption that original image was not modified (no hue)
+ *
+ * @method blt
+ * @param {Bitmap} source The bitmap to draw
+ * @param {Number} sx The x coordinate in the source
+ * @param {Number} sy The y coordinate in the source
+ * @param {Number} sw The width of the source image
+ * @param {Number} sh The height of the source image
+ * @param {Number} dx The x coordinate in the destination
+ * @param {Number} dy The y coordinate in the destination
+ * @param {Number} [dw=sw] The width to draw the image in the destination
+ * @param {Number} [dh=sh] The height to draw the image in the destination
+ */
+Bitmap.prototype.bltImage = function(source, sx, sy, sw, sh, dx, dy, dw, dh) {
+    dw = dw || sw;
+    dh = dh || sh;
+    if (sx >= 0 && sy >= 0 && sw > 0 && sh > 0 && dw > 0 && dh > 0 &&
+        sx + sw <= source.width && sy + sh <= source.height) {
+        this._context.globalCompositeOperation = 'source-over';
+        this._context.drawImage(source._image, sx, sy, sw, sh, dx, dy, dw, dh);
+        this._setDirty();
+    }
+};
+
+/**
  * Returns pixel color at the specified point.
  *
  * @method getPixel
@@ -736,8 +1242,8 @@ Bitmap.prototype.clear = function() {
  * @method fillRect
  * @param {Number} x The x coordinate for the upper-left corner
  * @param {Number} y The y coordinate for the upper-left corner
- * @param {Number} width The width of the rectangle to clear
- * @param {Number} height The height of the rectangle to clear
+ * @param {Number} width The width of the rectangle to fill
+ * @param {Number} height The height of the rectangle to fill
  * @param {String} color The color of the rectangle in CSS format
  */
 Bitmap.prototype.fillRect = function(x, y, width, height, color) {
@@ -765,11 +1271,11 @@ Bitmap.prototype.fillAll = function(color) {
  * @method gradientFillRect
  * @param {Number} x The x coordinate for the upper-left corner
  * @param {Number} y The y coordinate for the upper-left corner
- * @param {Number} width The width of the rectangle to clear
- * @param {Number} height The height of the rectangle to clear
- * @param {String} color1 The start color of the gradation
- * @param {String} color2 The end color of the gradation
- * @param {Boolean} vertical Whether it draws a vertical gradient
+ * @param {Number} width The width of the rectangle to fill
+ * @param {Number} height The height of the rectangle to fill
+ * @param {String} color1 The gradient starting color
+ * @param {String} color2 The gradient ending color
+ * @param {Boolean} vertical Wether the gradient should be draw as vertical or not
  */
 Bitmap.prototype.gradientFillRect = function(x, y, width, height, color1,
                                              color2, vertical) {
@@ -790,11 +1296,11 @@ Bitmap.prototype.gradientFillRect = function(x, y, width, height, color1,
 };
 
 /**
- * Draw the filled circle.
+ * Draw a bitmap in the shape of a circle
  *
  * @method drawCircle
- * @param {Number} x The x coordinate of the center of the circle
- * @param {Number} y The y coordinate of the center of the circle
+ * @param {Number} x The x coordinate based on the circle center
+ * @param {Number} y The y coordinate based on the circle center
  * @param {Number} radius The radius of the circle
  * @param {String} color The color of the circle in CSS format
  */
@@ -999,10 +1505,10 @@ Bitmap.prototype.blur = function() {
  * @param {Function} listner The callback function
  */
 Bitmap.prototype.addLoadListener = function(listner) {
-    if (this._isLoading) {
+    if (!this.isReady()) {
         this._loadListeners.push(listner);
     } else {
-        listner();
+        listner(this);
     }
 };
 
@@ -1050,11 +1556,59 @@ Bitmap.prototype._drawTextBody = function(text, tx, ty, maxWidth) {
  * @private
  */
 Bitmap.prototype._onLoad = function() {
-    this._isLoading = false;
-    this.resize(this._image.width, this._image.height);
-    this._context.drawImage(this._image, 0, 0);
-    this._setDirty();
-    this._callLoadListeners();
+    this._image.removeEventListener('load', this._loadListener);
+    this._image.removeEventListener('error', this._errorListener);
+
+    this._renewCanvas();
+
+    switch(this._loadingState){
+        case 'requesting':
+            this._loadingState = 'requestCompleted';
+            if(this._decodeAfterRequest){
+                this.decode();
+            }else{
+                this._loadingState = 'purged';
+                this._clearImgInstance();
+            }
+            break;
+
+        case 'decrypting':
+            window.URL.revokeObjectURL(this._image.src);
+            this._loadingState = 'decryptCompleted';
+            if(this._decodeAfterRequest){
+                this.decode();
+            }else{
+                this._loadingState = 'purged';
+                this._clearImgInstance();
+            }
+            break;
+    }
+};
+
+Bitmap.prototype.decode = function(){
+    switch(this._loadingState){
+        case 'requestCompleted': case 'decryptCompleted':
+            this._loadingState = 'loaded';
+
+            if(!this.__canvas) this._createBaseTexture(this._image);
+            this._setDirty();
+            this._callLoadListeners();
+            break;
+
+        case 'requesting': case 'decrypting':
+            this._decodeAfterRequest = true;
+            if (!this._loader) {
+                this._loader = ResourceHandler.createLoader(this._url, this._requestImage.bind(this, this._url), this._onError.bind(this));
+                this._image.removeEventListener('error', this._errorListener);
+                this._image.addEventListener('error', this._errorListener = this._loader);
+            }
+            break;
+
+        case 'pending': case 'purged': case 'error':
+            this._decodeAfterRequest = true;
+            this._requestImage(this._url);
+            break;
+    }
 };
 
 /**
@@ -1064,7 +1618,7 @@ Bitmap.prototype._onLoad = function() {
 Bitmap.prototype._callLoadListeners = function() {
     while (this._loadListeners.length > 0) {
         var listener = this._loadListeners.shift();
-        listener();
+        listener(this);
     }
 };
 
@@ -1073,7 +1627,9 @@ Bitmap.prototype._callLoadListeners = function() {
  * @private
  */
 Bitmap.prototype._onError = function() {
-    this._hasError = true;
+    this._image.removeEventListener('load', this._loadListener);
+    this._image.removeEventListener('error', this._errorListener);
+    this._loadingState = 'error';
 };
 
 /**
@@ -1081,7 +1637,72 @@ Bitmap.prototype._onError = function() {
  * @private
  */
 Bitmap.prototype._setDirty = function() {
-    this._baseTexture.dirty();
+    this._dirty = true;
+};
+
+/**
+ * updates texture is bitmap was dirty
+ * @method checkDirty
+ */
+Bitmap.prototype.checkDirty = function() {
+    if (this._dirty) {
+        this._baseTexture.update();
+        this._dirty = false;
+    }
+};
+
+Bitmap.request = function(url){
+    var bitmap = Object.create(Bitmap.prototype);
+    bitmap._defer = true;
+    bitmap.initialize();
+
+    bitmap._url = url;
+    bitmap._loadingState = 'pending';
+
+    return bitmap;
+};
+
+Bitmap.prototype._requestImage = function(url){
+    if(Bitmap._reuseImages.length !== 0){
+        this._image = Bitmap._reuseImages.pop();
+    }else{
+        this._image = new Image();
+    }
+
+    if (this._decodeAfterRequest && !this._loader) {
+        this._loader = ResourceHandler.createLoader(url, this._requestImage.bind(this, url), this._onError.bind(this));
+    }
+
+    this._image = new Image();
+    this._url = url;
+    this._loadingState = 'requesting';
+
+    if(!Decrypter.checkImgIgnore(url) && Decrypter.hasEncryptedImages) {
+        this._loadingState = 'decrypting';
+        Decrypter.decryptImg(url, this);
+    } else {
+        this._image.src = url;
+
+        this._image.addEventListener('load', this._loadListener = Bitmap.prototype._onLoad.bind(this));
+        this._image.addEventListener('error', this._errorListener = this._loader || Bitmap.prototype._onError.bind(this));
+    }
+};
+
+Bitmap.prototype.isRequestOnly = function(){
+    return !(this._decodeAfterRequest || this.isReady());
+};
+
+Bitmap.prototype.isRequestReady = function(){
+    return this._loadingState !== 'pending' &&
+        this._loadingState !== 'requesting' &&
+        this._loadingState !== 'decrypting';
+};
+
+Bitmap.prototype.startRequest = function(){
+    if(this._loadingState === 'pending'){
+        this._decodeAfterRequest = false;
+        this._requestImage(this._url);
+    }
 };
 
 //-----------------------------------------------------------------------------
@@ -1093,6 +1714,10 @@ Bitmap.prototype._setDirty = function() {
 function Graphics() {
     throw new Error('This is a static class');
 }
+
+Graphics._cssFontLoading =  document.fonts && document.fonts.ready;
+Graphics._fontLoaded = null;
+Graphics._videoVolume = 1;
 
 /**
  * Initializes the graphics system.
@@ -1114,9 +1739,12 @@ Graphics.initialize = function(width, height, type) {
     this._scale = 1;
     this._realScale = 1;
 
+    this._errorShowed = false;
     this._errorPrinter = null;
     this._canvas = null;
     this._video = null;
+    this._videoUnlocked = false;
+    this._videoLoading = false;
     this._upperCanvas = null;
     this._renderer = null;
     this._fpsMeter = null;
@@ -1140,6 +1768,22 @@ Graphics.initialize = function(width, height, type) {
     this._disableTextSelection();
     this._disableContextMenu();
     this._setupEventHandlers();
+    this._setupCssFontLoading();
+};
+
+
+Graphics._setupCssFontLoading = function(){
+    if(Graphics._cssFontLoading){
+        document.fonts.ready.then(function(fonts){
+            Graphics._fontLoaded = fonts;
+        }).catch(function(error){
+            SceneManager.onError(error);
+        });
+    }
+};
+
+Graphics.canUseCssFontLoading = function(){
+    return !!this._cssFontLoading;
 };
 
 /**
@@ -1227,6 +1871,9 @@ Graphics.render = function(stage) {
         var startTime = Date.now();
         if (stage) {
             this._renderer.render(stage);
+            if (this._renderer.gl && this._renderer.gl.flush) {
+                this._renderer.gl.flush();
+            }
         }
         var endTime = Date.now();
         var elapsed = endTime - startTime;
@@ -1247,7 +1894,7 @@ Graphics.render = function(stage) {
  * @return {Boolean} True if the renderer type is WebGL
  */
 Graphics.isWebGL = function() {
-    return this._renderer && this._renderer.type === PIXI.WEBGL_RENDERER;
+    return this._renderer && this._renderer.type === PIXI.RENDERER_TYPE.WEBGL;
 };
 
 /**
@@ -1333,6 +1980,43 @@ Graphics.endLoading = function() {
 };
 
 /**
+ * Displays the loading error text to the screen.
+ *
+ * @static
+ * @method printLoadingError
+ * @param {String} url The url of the resource failed to load
+ */
+Graphics.printLoadingError = function(url) {
+    if (this._errorPrinter && !this._errorShowed) {
+        this._errorPrinter.innerHTML = this._makeErrorHtml('Loading Error', 'Failed to load: ' + url);
+        var button = document.createElement('button');
+        button.innerHTML = 'Retry';
+        button.style.fontSize = '24px';
+        button.style.color = '#ffffff';
+        button.style.backgroundColor = '#000000';
+        button.onmousedown = button.ontouchstart = function(event) {
+            ResourceHandler.retry();
+            event.stopPropagation();
+        };
+        this._errorPrinter.appendChild(button);
+        this._loadingCount = -Infinity;
+    }
+};
+
+/**
+ * Erases the loading error text.
+ *
+ * @static
+ * @method eraseLoadingError
+ */
+Graphics.eraseLoadingError = function() {
+    if (this._errorPrinter && !this._errorShowed) {
+        this._errorPrinter.innerHTML = '';
+        this.startLoading();
+    }
+};
+
+/**
  * Displays the error text to the screen.
  *
  * @static
@@ -1341,6 +2025,7 @@ Graphics.endLoading = function() {
  * @param {String} message The message of the error
  */
 Graphics.printError = function(name, message) {
+    this._errorShowed = true;
     if (this._errorPrinter) {
         this._errorPrinter.innerHTML = this._makeErrorHtml(name, message);
     }
@@ -1401,17 +2086,25 @@ Graphics.loadFont = function(name, url) {
  * @return {Boolean} True if the font file is loaded
  */
 Graphics.isFontLoaded = function(name) {
-    if (!this._hiddenCanvas) {
-        this._hiddenCanvas = document.createElement('canvas');
+    if (Graphics._cssFontLoading) {
+        if(Graphics._fontLoaded){
+            return Graphics._fontLoaded.check('10px "'+name+'"');
+        }
+
+        return false;
+    } else {
+        if (!this._hiddenCanvas) {
+            this._hiddenCanvas = document.createElement('canvas');
+        }
+        var context = this._hiddenCanvas.getContext('2d');
+        var text = 'abcdefghijklmnopqrstuvwxyz';
+        var width1, width2;
+        context.font = '40px ' + name + ', sans-serif';
+        width1 = context.measureText(text).width;
+        context.font = '40px sans-serif';
+        width2 = context.measureText(text).width;
+        return width1 !== width2;
     }
-    var context = this._hiddenCanvas.getContext('2d');
-    var text = 'abcdefghijklmnopqrstuvwxyz';
-    var width1, width2;
-    context.font = '40px ' + name + ', sans-serif';
-    width1 = context.measureText(text).width;
-    context.font = '40px sans-serif';
-    width2 = context.measureText(text).width;
-    return width1 !== width2;
 };
 
 /**
@@ -1422,11 +2115,23 @@ Graphics.isFontLoaded = function(name) {
  * @param {String} src
  */
 Graphics.playVideo = function(src) {
+    this._videoLoader = ResourceHandler.createLoader(null, this._playVideo.bind(this, src), this._onVideoError.bind(this));
+    this._playVideo(src);
+};
+
+/**
+ * @static
+ * @method _playVideo
+ * @param {String} src
+ * @private
+ */
+Graphics._playVideo = function(src) {
     this._video.src = src;
     this._video.onloadeddata = this._onVideoLoad.bind(this);
-    this._video.onerror = this._onVideoError.bind(this);
+    this._video.onerror = this._videoLoader;
     this._video.onended = this._onVideoEnd.bind(this);
     this._video.load();
+    this._videoLoading = true;
 };
 
 /**
@@ -1437,7 +2142,7 @@ Graphics.playVideo = function(src) {
  * @return {Boolean} True if the video is playing
  */
 Graphics.isVideoPlaying = function() {
-    return this._video && this._isVideoVisible();
+    return this._videoLoading || this._isVideoVisible();
 };
 
 /**
@@ -1450,6 +2155,20 @@ Graphics.isVideoPlaying = function() {
  */
 Graphics.canPlayVideoType = function(type) {
     return this._video && this._video.canPlayType(type);
+};
+
+/**
+ * Sets volume of a video.
+ *
+ * @static
+ * @method setVideoVolume
+ * @param {Number} value
+ */
+Graphics.setVideoVolume = function(value) {
+    this._videoVolume = value;
+    if (this._video) {
+        this._video.volume = this._videoVolume;
+    }
 };
 
 /**
@@ -1500,6 +2219,16 @@ Graphics.pageToCanvasY = function(y) {
 Graphics.isInsideCanvas = function(x, y) {
     return (x >= 0 && x < this._width && y >= 0 && y < this._height);
 };
+
+/**
+ * Calls pixi.js garbage collector
+ */
+Graphics.callGC = function() {
+    if (Graphics.isWebGL()) {
+        Graphics._renderer.textureGC.run();
+    }
+};
+
 
 /**
  * The width of the game screen.
@@ -1766,7 +2495,10 @@ Graphics._createVideo = function() {
     this._video = document.createElement('video');
     this._video.id = 'GameVideo';
     this._video.style.opacity = 0;
+    this._video.setAttribute('playsinline', '');
+    this._video.volume = this._videoVolume;
     this._updateVideo();
+    makeVideoPlayableInline(this._video);
     document.body.appendChild(this._video);
 };
 
@@ -1857,6 +2589,10 @@ Graphics._createRenderer = function() {
             this._renderer = PIXI.autoDetectRenderer(width, height, options);
             break;
         }
+
+        if(this._renderer && this._renderer.textureGC)
+            this._renderer.textureGC.maxIdle = 1;
+
     } catch (e) {
         this._renderer = null;
     }
@@ -2017,6 +2753,7 @@ Graphics._applyCanvasFilter = function() {
 Graphics._onVideoLoad = function() {
     this._video.play();
     this._updateVisibility(true);
+    this._videoLoading = false;
 };
 
 /**
@@ -2026,6 +2763,7 @@ Graphics._onVideoLoad = function() {
  */
 Graphics._onVideoError = function() {
     this._updateVisibility(false);
+    this._videoLoading = false;
 };
 
 /**
@@ -2066,6 +2804,9 @@ Graphics._isVideoVisible = function() {
 Graphics._setupEventHandlers = function() {
     window.addEventListener('resize', this._onWindowResize.bind(this));
     document.addEventListener('keydown', this._onKeyDown.bind(this));
+    document.addEventListener('keydown', this._onTouchEnd.bind(this));
+    document.addEventListener('mousedown', this._onTouchEnd.bind(this));
+    document.addEventListener('touchend', this._onTouchEnd.bind(this));
 };
 
 /**
@@ -2099,6 +2840,22 @@ Graphics._onKeyDown = function(event) {
             this._switchFullScreen();
             break;
         }
+    }
+};
+
+/**
+ * @static
+ * @method _onTouchEnd
+ * @param {TouchEvent} event
+ * @private
+ */
+Graphics._onTouchEnd = function(event) {
+    if (!this._videoUnlocked) {
+        this._video.play();
+        this._videoUnlocked = true;
+    }
+    if (this._isVideoVisible() && this._video.paused) {
+        this._video.play();
     }
 };
 
@@ -2480,7 +3237,9 @@ Input._onKeyDown = function(event) {
         this.clear();
     }
     var buttonName = this.keyMapper[event.keyCode];
-    if (buttonName) {
+    if (ResourceHandler.exists() && buttonName === 'ok') {
+        ResourceHandler.retry();
+    } else if (buttonName) {
         this._currentState[buttonName] = true;
     }
 };
@@ -2562,6 +3321,10 @@ Input._updateGamepadState = function(gamepad) {
     var buttons = gamepad.buttons;
     var axes = gamepad.axes;
     var threshold = 0.5;
+    newState[12] = false;
+    newState[13] = false;
+    newState[14] = false;
+    newState[15] = false;
     for (var i = 0; i < buttons.length; i++) {
         newState[i] = buttons[i].pressed;
     }
@@ -2920,12 +3683,13 @@ Object.defineProperty(TouchInput, 'date', {
  * @private
  */
 TouchInput._setupEventHandlers = function() {
+    var isSupportPassive = Utils.isSupportPassiveEvent();
     document.addEventListener('mousedown', this._onMouseDown.bind(this));
     document.addEventListener('mousemove', this._onMouseMove.bind(this));
     document.addEventListener('mouseup', this._onMouseUp.bind(this));
     document.addEventListener('wheel', this._onWheel.bind(this));
-    document.addEventListener('touchstart', this._onTouchStart.bind(this));
-    document.addEventListener('touchmove', this._onTouchMove.bind(this));
+    document.addEventListener('touchstart', this._onTouchStart.bind(this), isSupportPassive ? {passive: false} : false);
+    document.addEventListener('touchmove', this._onTouchMove.bind(this), isSupportPassive ? {passive: false} : false);
     document.addEventListener('touchend', this._onTouchEnd.bind(this));
     document.addEventListener('touchcancel', this._onTouchCancel.bind(this));
     document.addEventListener('pointerdown', this._onPointerDown.bind(this));
@@ -3181,6 +3945,8 @@ function Sprite() {
 Sprite.prototype = Object.create(PIXI.Sprite.prototype);
 Sprite.prototype.constructor = Sprite;
 
+Sprite.voidFilter = new PIXI.filters.VoidFilter();
+
 Sprite.prototype.initialize = function(bitmap) {
     var texture = new PIXI.Texture(new PIXI.BaseTexture());
 
@@ -3189,12 +3955,18 @@ Sprite.prototype.initialize = function(bitmap) {
     this._bitmap = null;
     this._frame = new Rectangle();
     this._realFrame = new Rectangle();
-    this._offset = new Point();
     this._blendColor = [0, 0, 0, 0];
     this._colorTone = [0, 0, 0, 0];
     this._canvas = null;
     this._context = null;
     this._tintTexture = null;
+
+    /**
+     * use heavy renderer that will reduce border artifacts and apply advanced blendModes
+     * @type {boolean}
+     * @private
+     */
+    this._isPicture = false;
 
     this.spriteId = Sprite._counter++;
     this.opaque = false;
@@ -3218,11 +3990,13 @@ Object.defineProperty(Sprite.prototype, 'bitmap', {
     set: function(value) {
         if (this._bitmap !== value) {
             this._bitmap = value;
-            if (this._bitmap) {
-                this.setFrame(0, 0, 0, 0);
-                this._bitmap.addLoadListener(this._onBitmapLoad.bind(this));
-            } else {
-                this.texture.setFrame(Rectangle.emptyRectangle);
+
+            if(value){
+                this._refreshFrame = true;
+                value.addLoadListener(this._onBitmapLoad.bind(this));
+            }else{
+                this._refreshFrame = false;
+                this.texture.frame = Rectangle.emptyRectangle;
             }
         }
     },
@@ -3314,6 +4088,7 @@ Sprite.prototype.move = function(x, y) {
  * @param {Number} height The height of the frame
  */
 Sprite.prototype.setFrame = function(x, y, width, height) {
+    this._refreshFrame = false;
     var frame = this._frame;
     if (x !== frame.x || y !== frame.y ||
             width !== frame.width || height !== frame.height) {
@@ -3381,11 +4156,15 @@ Sprite.prototype.setColorTone = function(tone) {
  * @method _onBitmapLoad
  * @private
  */
-Sprite.prototype._onBitmapLoad = function() {
-    if (this._frame.width === 0 && this._frame.height === 0) {
-        this._frame.width = this._bitmap.width;
-        this._frame.height = this._bitmap.height;
+Sprite.prototype._onBitmapLoad = function(bitmapLoaded) {
+    if(bitmapLoaded === this._bitmap){
+        if (this._refreshFrame && this._bitmap) {
+            this._refreshFrame = false;
+            this._frame.width = this._bitmap.width;
+            this._frame.height = this._bitmap.height;
+        }
     }
+
     this._refresh();
 };
 
@@ -3409,29 +4188,30 @@ Sprite.prototype._refresh = function() {
     this._realFrame.y = realY;
     this._realFrame.width = realW;
     this._realFrame.height = realH;
-    this._offset.x = realX - frameX;
-    this._offset.y = realY - frameY;
+    this.pivot.x = frameX - realX;
+    this.pivot.y = frameY - realY;
 
     if (realW > 0 && realH > 0) {
         if (this._needsTint()) {
             this._createTinter(realW, realH);
             this._executeTint(realX, realY, realW, realH);
-            this._tintTexture.dirty();
+            this._tintTexture.update();
             this.texture.baseTexture = this._tintTexture;
-            this.texture.setFrame(new Rectangle(0, 0, realW, realH));
+            this.texture.frame = new Rectangle(0, 0, realW, realH);
         } else {
             if (this._bitmap) {
                 this.texture.baseTexture = this._bitmap.baseTexture;
             }
-            this.texture.setFrame(this._realFrame);
+            this.texture.frame = this._realFrame;
         }
     } else if (this._bitmap) {
-        this.texture.setFrame(Rectangle.emptyRectangle);
+        this.texture.frame = Rectangle.emptyRectangle;
     } else {
-        this.texture.trim = this._frame;
-        this.texture.setFrame(this._frame);
-        this.texture.trim = null;
+        this.texture.baseTexture.width = Math.max(this.texture.baseTexture.width, this._frame.x + this._frame.width);
+        this.texture.baseTexture.height = Math.max(this.texture.baseTexture.height, this._frame.y + this._frame.height);
+        this.texture.frame = this._frame;
     }
+    this.texture._updateID++;
 };
 
 /**
@@ -3543,74 +4323,82 @@ Sprite.prototype._executeTint = function(x, y, w, h) {
     context.drawImage(this._bitmap.canvas, x, y, w, h, 0, 0, w, h);
 };
 
-/**
- * @method updateTransform
- * @private
- */
-Sprite.prototype.updateTransform = function() {
-    PIXI.Sprite.prototype.updateTransform.call(this);
-    this.worldTransform.tx += this._offset.x;
-    this.worldTransform.ty += this._offset.y;
-};
+Sprite.prototype._renderCanvas_PIXI = PIXI.Sprite.prototype._renderCanvas;
+Sprite.prototype._renderWebGL_PIXI = PIXI.Sprite.prototype._renderWebGL;
 
 /**
  * @method _renderCanvas
- * @param {Object} renderSession
+ * @param {Object} renderer
  * @private
  */
-Sprite.prototype._renderCanvas = function(renderSession) {
-    if (this.visible && this.alpha > 0) {
-        if (this.texture.crop.width <= 0 || this.texture.crop.height <= 0) {
-            if (this._mask) {
-                renderSession.maskManager.pushMask(this._mask, renderSession);
+Sprite.prototype._renderCanvas = function(renderer) {
+    if (this.bitmap) {
+        this.bitmap.touch();
+    }
+    if(this.bitmap && !this.bitmap.isReady()){
+        return;
+    }
+
+    if (this.texture.frame.width > 0 && this.texture.frame.height > 0) {
+        this._renderCanvas_PIXI(renderer);
+    }
+};
+
+/**
+ * checks if we need to speed up custom blendmodes
+ * @param renderer
+ * @private
+ */
+Sprite.prototype._speedUpCustomBlendModes = function(renderer) {
+    var picture = renderer.plugins.picture;
+    var blend = this.blendMode;
+    if (renderer.renderingToScreen && renderer._activeRenderTarget.root) {
+        if (picture.drawModes[blend]) {
+            var stage = renderer._lastObjectRendered;
+            var f = stage._filters;
+            if (!f || !f[0]) {
+                setTimeout(function () {
+                    var f = stage._filters;
+                    if (!f || !f[0]) {
+                        stage.filters = [Sprite.voidFilter];
+                        stage.filterArea = new PIXI.Rectangle(0, 0, Graphics.width, Graphics.height);
+                    }
+                }, 0);
             }
-            for (var i = 0, j = this.children.length; i < j; i++) {
-                this.children[i]._renderCanvas(renderSession);
-            }
-            if (this._mask) {
-                renderSession.maskManager.popMask(renderSession);
-            }
-        } else {
-            PIXI.Sprite.prototype._renderCanvas.call(this, renderSession);
         }
     }
 };
 
 /**
  * @method _renderWebGL
- * @param {Object} renderSession
+ * @param {Object} renderer
  * @private
  */
-Sprite.prototype._renderWebGL = function(renderSession) {
-    if (this.visible && this.alpha > 0) {
-        var spriteBatch =  renderSession.spriteBatch;
-        if (this._filters) {
-            spriteBatch.flush();
-            renderSession.filterManager.pushFilter(this._filterBlock);
-            if (this.opaque) {
-                // Required for a bug in Firefox on Windows
-                renderSession.gl.clearColor(0, 0, 0, 1);
-                renderSession.gl.clear(renderSession.gl.COLOR_BUFFER_BIT);
-            }
+Sprite.prototype._renderWebGL = function(renderer) {
+    if (this.bitmap) {
+        this.bitmap.touch();
+    }
+    if(this.bitmap && !this.bitmap.isReady()){
+        return;
+    }
+    if (this.texture.frame.width > 0 && this.texture.frame.height > 0) {
+        if (this._bitmap) {
+            this._bitmap.checkDirty();
         }
-        if (this._mask) {
-            spriteBatch.stop();
-            renderSession.maskManager.pushMask(this.mask, renderSession);
-            spriteBatch.start();
-        }
-        spriteBatch.render(this);
-        for (var i = 0, j = this.children.length; i < j; i++) {
-            this.children[i]._renderWebGL(renderSession);
-        }
-        if (this._mask) {
-            spriteBatch.stop();
-            renderSession.maskManager.popMask(this._mask, renderSession);
-            spriteBatch.start();
-        }
-        if (this._filters) {
-            spriteBatch.stop();
-            renderSession.filterManager.popFilter();
-            spriteBatch.start();
+
+        //copy of pixi-v4 internal code
+        this.calculateVertices();
+
+        if (this.pluginName === 'sprite' && this._isPicture) {
+            // use heavy renderer, which reduces artifacts and applies corrent blendMode,
+            // but does not use multitexture optimization
+            this._speedUpCustomBlendModes(renderer);
+            renderer.setObjectRenderer(renderer.plugins.picture);
+            renderer.plugins.picture.render(this);
+        } else {
+            // use pixi super-speed renderer
+            renderer.setObjectRenderer(renderer.plugins[this.pluginName]);
+			renderer.plugins[this.pluginName].render(this);
         }
     }
 };
@@ -3731,11 +4519,11 @@ function Tilemap() {
     this.initialize.apply(this, arguments);
 }
 
-Tilemap.prototype = Object.create(PIXI.DisplayObjectContainer.prototype);
+Tilemap.prototype = Object.create(PIXI.Container.prototype);
 Tilemap.prototype.constructor = Tilemap;
 
 Tilemap.prototype.initialize = function() {
-    PIXI.DisplayObjectContainer.call(this);
+    PIXI.Container.call(this);
 
     this._margin = 20;
     this._width = Graphics.width + this._margin * 2;
@@ -3910,11 +4698,17 @@ Tilemap.prototype.isReady = function() {
  */
 Tilemap.prototype.update = function() {
     this.animationCount++;
+    this.animationFrame = Math.floor(this.animationCount / 30);
     this.children.forEach(function(child) {
         if (child.update) {
             child.update();
         }
     });
+    for (var i=0; i<this.bitmaps.length;i++) {
+        if (this.bitmaps[i]) {
+            this.bitmaps[i].touch();
+        }
+    }
 };
 
 /**
@@ -3927,6 +4721,15 @@ Tilemap.prototype.refresh = function() {
 };
 
 /**
+ * Forces to refresh the tileset
+ *
+ * @method refresh
+ */
+Tilemap.prototype.refreshTileset = function() {
+
+};
+
+/**
  * @method updateTransform
  * @private
  */
@@ -3936,9 +4739,17 @@ Tilemap.prototype.updateTransform = function() {
     var startX = Math.floor((ox - this._margin) / this._tileWidth);
     var startY = Math.floor((oy - this._margin) / this._tileHeight);
     this._updateLayerPositions(startX, startY);
-    this._paintAllTiles(startX, startY);
+    if (this._needsRepaint || this._lastAnimationFrame !== this.animationFrame ||
+        this._lastStartX !== startX || this._lastStartY !== startY) {
+        this._frameUpdated = this._lastAnimationFrame !== this.animationFrame;
+        this._lastAnimationFrame = this.animationFrame;
+        this._lastStartX = startX;
+        this._lastStartY = startY;
+        this._paintAllTiles(startX, startY);
+        this._needsRepaint = false;
+    }
     this._sortChildren();
-    PIXI.DisplayObjectContainer.prototype.updateTransform.call(this);
+    PIXI.Container.prototype.updateTransform.call(this);
 };
 
 /**
@@ -4100,13 +4911,9 @@ Tilemap.prototype._paintTiles = function(startX, startY, x, y) {
         }
     }
 
-    var count = 1000 + this.animationCount - my;
-    var frameUpdated = (count % 30 === 0);
-    this._animationFrame = Math.floor(count / 30);
-
     var lastLowerTiles = this._readLastTiles(0, lx, ly);
     if (!lowerTiles.equals(lastLowerTiles) ||
-            (Tilemap.isTileA1(tileId0) && frameUpdated)) {
+            (Tilemap.isTileA1(tileId0) && this._frameUpdated)) {
         this._lowerBitmap.clearRect(dx, dy, this._tileWidth, this._tileHeight);
         for (var i = 0; i < lowerTiles.length; i++) {
             var lowerTileId = lowerTiles[i];
@@ -4214,7 +5021,7 @@ Tilemap.prototype._drawNormalTile = function(bitmap, tileId, dx, dy) {
 
     var source = this.bitmaps[setNumber];
     if (source) {
-        bitmap.blt(source, sx, sy, w, h, dx, dy, w, h);
+        bitmap.bltImage(source, sx, sy, w, h, dx, dy, w, h);
     }
 };
 
@@ -4238,7 +5045,7 @@ Tilemap.prototype._drawAutotile = function(bitmap, tileId, dx, dy) {
     var isTable = false;
 
     if (Tilemap.isTileA1(tileId)) {
-        var waterSurfaceIndex = [0, 1, 2, 1][this._animationFrame % 4];
+        var waterSurfaceIndex = [0, 1, 2, 1][this.animationFrame % 4];
         setNumber = 0;
         if (kind === 0) {
             bx = waterSurfaceIndex * 2;
@@ -4261,7 +5068,7 @@ Tilemap.prototype._drawAutotile = function(bitmap, tileId, dx, dy) {
             else {
                 bx += 6;
                 autotileTable = Tilemap.WATERFALL_AUTOTILE_TABLE;
-                by += this._animationFrame % 3;
+                by += this.animationFrame % 3;
             }
         }
     } else if (Tilemap.isTileA2(tileId)) {
@@ -4304,11 +5111,11 @@ Tilemap.prototype._drawAutotile = function(bitmap, tileId, dx, dy) {
                 }
                 var sx2 = (bx * 2 + qsx2) * w1;
                 var sy2 = (by * 2 + qsy2) * h1;
-                bitmap.blt(source, sx2, sy2, w1, h1, dx1, dy1, w1, h1);
+                bitmap.bltImage(source, sx2, sy2, w1, h1, dx1, dy1, w1, h1);
                 dy1 += h1/2;
-                bitmap.blt(source, sx1, sy1, w1, h1/2, dx1, dy1, w1, h1/2);
+                bitmap.bltImage(source, sx1, sy1, w1, h1/2, dx1, dy1, w1, h1/2);
             } else {
-                bitmap.blt(source, sx1, sy1, w1, h1, dx1, dy1, w1, h1);
+                bitmap.bltImage(source, sx1, sy1, w1, h1, dx1, dy1, w1, h1);
             }
         }
     }
@@ -4345,7 +5152,7 @@ Tilemap.prototype._drawTableEdge = function(bitmap, tileId, dx, dy) {
                 var sy1 = (by * 2 + qsy) * h1 + h1/2;
                 var dx1 = dx + (i % 2) * w1;
                 var dy1 = dy + Math.floor(i / 2) * h1;
-                bitmap.blt(source, sx1, sy1, w1, h1/2, dx1, dy1, w1, h1/2);
+                bitmap.bltImage(source, sx1, sy1, w1, h1/2, dx1, dy1, w1, h1/2);
             }
         }
     }
@@ -4552,7 +5359,7 @@ Tilemap.isWallTopTile = function(tileId) {
 
 Tilemap.isWallSideTile = function(tileId) {
     return (this.isTileA3(tileId) || this.isTileA4(tileId)) &&
-            getAutotileKind(tileId) % 16 >= 8;
+            this.getAutotileKind(tileId) % 16 >= 8;
 };
 
 Tilemap.isWallTile = function(tileId) {
@@ -4668,6 +5475,424 @@ Tilemap.WATERFALL_AUTOTILE_TABLE = [
 
 //-----------------------------------------------------------------------------
 /**
+ * The tilemap which displays 2D tile-based game map using shaders
+ *
+ * @class Tilemap
+ * @constructor
+ */
+function ShaderTilemap() {
+    Tilemap.apply(this, arguments);
+    this.roundPixels = true;
+}
+
+ShaderTilemap.prototype = Object.create(Tilemap.prototype);
+ShaderTilemap.prototype.constructor = ShaderTilemap;
+
+// we need this constant for some platforms (Samsung S4, S5, Tab4, HTC One H8)
+PIXI.glCore.VertexArrayObject.FORCE_NATIVE = true;
+PIXI.settings.GC_MODE = PIXI.GC_MODES.AUTO;
+PIXI.tilemap.TileRenderer.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
+PIXI.tilemap.TileRenderer.DO_CLEAR = true;
+
+/**
+ * Uploads animation state in renderer
+ *
+ * @method _hackRenderer
+ * @private
+ */
+ShaderTilemap.prototype._hackRenderer = function(renderer) {
+    var af = this.animationFrame % 4;
+    if (af==3) af = 1;
+    renderer.plugins.tilemap.tileAnim[0] = af * this._tileWidth;
+    renderer.plugins.tilemap.tileAnim[1] = (this.animationFrame % 3) * this._tileHeight;
+    return renderer;
+};
+
+/**
+ * PIXI render method
+ *
+ * @method renderCanvas
+ * @param {Object} pixi renderer
+ */
+ShaderTilemap.prototype.renderCanvas = function(renderer) {
+    this._hackRenderer(renderer);
+    PIXI.Container.prototype.renderCanvas.call(this, renderer);
+};
+
+
+/**
+ * PIXI render method
+ *
+ * @method renderWebGL
+ * @param {Object} pixi renderer
+ */
+ShaderTilemap.prototype.renderWebGL = function(renderer) {
+    this._hackRenderer(renderer);
+    PIXI.Container.prototype.renderWebGL.call(this, renderer);
+};
+
+/**
+ * Forces to repaint the entire tilemap AND update bitmaps list if needed
+ *
+ * @method refresh
+ */
+ShaderTilemap.prototype.refresh = function() {
+    if (this._lastBitmapLength !== this.bitmaps.length) {
+        this._lastBitmapLength = this.bitmaps.length;
+        this.refreshTileset();
+    };
+    this._needsRepaint = true;
+};
+
+/**
+ * Call after you update tileset
+ *
+ * @method updateBitmaps
+ */
+ShaderTilemap.prototype.refreshTileset = function() {
+    var bitmaps = this.bitmaps.map(function(x) { return x._baseTexture ? new PIXI.Texture(x._baseTexture) : x; } );
+    this.lowerLayer.setBitmaps(bitmaps);
+    this.upperLayer.setBitmaps(bitmaps);
+};
+
+/**
+ * @method updateTransform
+ * @private
+ */
+ShaderTilemap.prototype.updateTransform = function() {
+    if (this.roundPixels) {
+        var ox = Math.floor(this.origin.x);
+        var oy = Math.floor(this.origin.y);
+    } else {
+        ox = this.origin.x;
+        oy = this.origin.y;
+    }
+    var startX = Math.floor((ox - this._margin) / this._tileWidth);
+    var startY = Math.floor((oy - this._margin) / this._tileHeight);
+    this._updateLayerPositions(startX, startY);
+    if (this._needsRepaint ||
+        this._lastStartX !== startX || this._lastStartY !== startY) {
+        this._lastStartX = startX;
+        this._lastStartY = startY;
+        this._paintAllTiles(startX, startY);
+        this._needsRepaint = false;
+    }
+    this._sortChildren();
+    PIXI.Container.prototype.updateTransform.call(this);
+};
+
+/**
+ * @method _createLayers
+ * @private
+ */
+ShaderTilemap.prototype._createLayers = function() {
+    var width = this._width;
+    var height = this._height;
+    var margin = this._margin;
+    var tileCols = Math.ceil(width / this._tileWidth) + 1;
+    var tileRows = Math.ceil(height / this._tileHeight) + 1;
+    var layerWidth = this._layerWidth = tileCols * this._tileWidth;
+    var layerHeight = this._layerHeight = tileRows * this._tileHeight;
+    this._needsRepaint = true;
+
+    if (!this.lowerZLayer) {
+        //@hackerham: create layers only in initialization. Doesn't depend on width/height
+        this.addChild(this.lowerZLayer = new PIXI.tilemap.ZLayer(this, 0));
+        this.addChild(this.upperZLayer = new PIXI.tilemap.ZLayer(this, 4));
+
+        var parameters = PluginManager.parameters('ShaderTilemap');
+        var useSquareShader = Number(parameters.hasOwnProperty('squareShader') ? parameters['squareShader'] : 0);
+
+        this.lowerZLayer.addChild(this.lowerLayer = new PIXI.tilemap.CompositeRectTileLayer(0, [], useSquareShader));
+        this.lowerLayer.shadowColor = new Float32Array([0.0, 0.0, 0.0, 0.5]);
+        this.upperZLayer.addChild(this.upperLayer = new PIXI.tilemap.CompositeRectTileLayer(4, [], useSquareShader));
+    }
+};
+
+/**
+ * @method _updateLayerPositions
+ * @param {Number} startX
+ * @param {Number} startY
+ * @private
+ */
+ShaderTilemap.prototype._updateLayerPositions = function(startX, startY) {
+    if (this.roundPixels) {
+        var ox = Math.floor(this.origin.x);
+        var oy = Math.floor(this.origin.y);
+    } else {
+        ox = this.origin.x;
+        oy = this.origin.y;
+    }
+    this.lowerZLayer.position.x = startX * this._tileWidth - ox;
+    this.lowerZLayer.position.y = startY * this._tileHeight - oy;
+    this.upperZLayer.position.x = startX * this._tileWidth - ox;
+    this.upperZLayer.position.y = startY * this._tileHeight - oy;
+};
+
+/**
+ * @method _paintAllTiles
+ * @param {Number} startX
+ * @param {Number} startY
+ * @private
+ */
+ShaderTilemap.prototype._paintAllTiles = function(startX, startY) {
+    this.lowerZLayer.clear();
+    this.upperZLayer.clear();
+    var tileCols = Math.ceil(this._width / this._tileWidth) + 1;
+    var tileRows = Math.ceil(this._height / this._tileHeight) + 1;
+    for (var y = 0; y < tileRows; y++) {
+        for (var x = 0; x < tileCols; x++) {
+            this._paintTiles(startX, startY, x, y);
+        }
+    }
+};
+
+/**
+ * @method _paintTiles
+ * @param {Number} startX
+ * @param {Number} startY
+ * @param {Number} x
+ * @param {Number} y
+ * @private
+ */
+ShaderTilemap.prototype._paintTiles = function(startX, startY, x, y) {
+    var mx = startX + x;
+    var my = startY + y;
+    var dx = x * this._tileWidth, dy = y * this._tileHeight;
+    var tileId0 = this._readMapData(mx, my, 0);
+    var tileId1 = this._readMapData(mx, my, 1);
+    var tileId2 = this._readMapData(mx, my, 2);
+    var tileId3 = this._readMapData(mx, my, 3);
+    var shadowBits = this._readMapData(mx, my, 4);
+    var upperTileId1 = this._readMapData(mx, my - 1, 1);
+    var lowerLayer = this.lowerLayer.children[0];
+    var upperLayer = this.upperLayer.children[0];
+
+    if (this._isHigherTile(tileId0)) {
+        this._drawTile(upperLayer, tileId0, dx, dy);
+    } else {
+        this._drawTile(lowerLayer, tileId0, dx, dy);
+    }
+    if (this._isHigherTile(tileId1)) {
+        this._drawTile(upperLayer, tileId1, dx, dy);
+    } else {
+        this._drawTile(lowerLayer, tileId1, dx, dy);
+    }
+
+    this._drawShadow(lowerLayer, shadowBits, dx, dy);
+    if (this._isTableTile(upperTileId1) && !this._isTableTile(tileId1)) {
+        if (!Tilemap.isShadowingTile(tileId0)) {
+            this._drawTableEdge(lowerLayer, upperTileId1, dx, dy);
+        }
+    }
+
+    if (this._isOverpassPosition(mx, my)) {
+        this._drawTile(upperLayer, tileId2, dx, dy);
+        this._drawTile(upperLayer, tileId3, dx, dy);
+    } else {
+        if (this._isHigherTile(tileId2)) {
+            this._drawTile(upperLayer, tileId2, dx, dy);
+        } else {
+            this._drawTile(lowerLayer, tileId2, dx, dy);
+        }
+        if (this._isHigherTile(tileId3)) {
+            this._drawTile(upperLayer, tileId3, dx, dy);
+        } else {
+            this._drawTile(lowerLayer, tileId3, dx, dy);
+        }
+    }
+};
+
+/**
+ * @method _drawTile
+ * @param {Array} layers
+ * @param {Number} tileId
+ * @param {Number} dx
+ * @param {Number} dy
+ * @private
+ */
+ShaderTilemap.prototype._drawTile = function(layer, tileId, dx, dy) {
+    if (Tilemap.isVisibleTile(tileId)) {
+        if (Tilemap.isAutotile(tileId)) {
+            this._drawAutotile(layer, tileId, dx, dy);
+        } else {
+            this._drawNormalTile(layer, tileId, dx, dy);
+        }
+    }
+};
+
+/**
+ * @method _drawNormalTile
+ * @param {Array} layers
+ * @param {Number} tileId
+ * @param {Number} dx
+ * @param {Number} dy
+ * @private
+ */
+ShaderTilemap.prototype._drawNormalTile = function(layer, tileId, dx, dy) {
+    var setNumber = 0;
+
+    if (Tilemap.isTileA5(tileId)) {
+        setNumber = 4;
+    } else {
+        setNumber = 5 + Math.floor(tileId / 256);
+    }
+
+    var w = this._tileWidth;
+    var h = this._tileHeight;
+    var sx = (Math.floor(tileId / 128) % 2 * 8 + tileId % 8) * w;
+    var sy = (Math.floor(tileId % 256 / 8) % 16) * h;
+
+    layer.addRect(setNumber, sx, sy, dx, dy, w, h);
+};
+
+/**
+ * @method _drawAutotile
+ * @param {Array} layers
+ * @param {Number} tileId
+ * @param {Number} dx
+ * @param {Number} dy
+ * @private
+ */
+ShaderTilemap.prototype._drawAutotile = function(layer, tileId, dx, dy) {
+    var autotileTable = Tilemap.FLOOR_AUTOTILE_TABLE;
+    var kind = Tilemap.getAutotileKind(tileId);
+    var shape = Tilemap.getAutotileShape(tileId);
+    var tx = kind % 8;
+    var ty = Math.floor(kind / 8);
+    var bx = 0;
+    var by = 0;
+    var setNumber = 0;
+    var isTable = false;
+    var animX = 0, animY = 0;
+
+    if (Tilemap.isTileA1(tileId)) {
+        setNumber = 0;
+        if (kind === 0) {
+            animX = 2;
+            by = 0;
+        } else if (kind === 1) {
+            animX = 2;
+            by = 3;
+        } else if (kind === 2) {
+            bx = 6;
+            by = 0;
+        } else if (kind === 3) {
+            bx = 6;
+            by = 3;
+        } else {
+            bx = Math.floor(tx / 4) * 8;
+            by = ty * 6 + Math.floor(tx / 2) % 2 * 3;
+            if (kind % 2 === 0) {
+                animX = 2;
+            }
+            else {
+                bx += 6;
+                autotileTable = Tilemap.WATERFALL_AUTOTILE_TABLE;
+                animY = 1;
+            }
+        }
+    } else if (Tilemap.isTileA2(tileId)) {
+        setNumber = 1;
+        bx = tx * 2;
+        by = (ty - 2) * 3;
+        isTable = this._isTableTile(tileId);
+    } else if (Tilemap.isTileA3(tileId)) {
+        setNumber = 2;
+        bx = tx * 2;
+        by = (ty - 6) * 2;
+        autotileTable = Tilemap.WALL_AUTOTILE_TABLE;
+    } else if (Tilemap.isTileA4(tileId)) {
+        setNumber = 3;
+        bx = tx * 2;
+        by = Math.floor((ty - 10) * 2.5 + (ty % 2 === 1 ? 0.5 : 0));
+        if (ty % 2 === 1) {
+            autotileTable = Tilemap.WALL_AUTOTILE_TABLE;
+        }
+    }
+
+    var table = autotileTable[shape];
+    var w1 = this._tileWidth / 2;
+    var h1 = this._tileHeight / 2;
+    for (var i = 0; i < 4; i++) {
+        var qsx = table[i][0];
+        var qsy = table[i][1];
+        var sx1 = (bx * 2 + qsx) * w1;
+        var sy1 = (by * 2 + qsy) * h1;
+        var dx1 = dx + (i % 2) * w1;
+        var dy1 = dy + Math.floor(i / 2) * h1;
+        if (isTable && (qsy === 1 || qsy === 5)) {
+            var qsx2 = qsx;
+            var qsy2 = 3;
+            if (qsy === 1) {
+                //qsx2 = [0, 3, 2, 1][qsx];
+                qsx2 = (4-qsx)%4;
+            }
+            var sx2 = (bx * 2 + qsx2) * w1;
+            var sy2 = (by * 2 + qsy2) * h1;
+            layer.addRect(setNumber, sx2, sy2, dx1, dy1, w1, h1, animX, animY);
+            layer.addRect(setNumber, sx1, sy1, dx1, dy1+h1/2, w1, h1/2, animX, animY);
+        } else {
+            layer.addRect(setNumber, sx1, sy1, dx1, dy1, w1, h1, animX, animY);
+        }
+    }
+};
+
+/**
+ * @method _drawTableEdge
+ * @param {Array} layers
+ * @param {Number} tileId
+ * @param {Number} dx
+ * @param {Number} dy
+ * @private
+ */
+ShaderTilemap.prototype._drawTableEdge = function(layer, tileId, dx, dy) {
+    if (Tilemap.isTileA2(tileId)) {
+        var autotileTable = Tilemap.FLOOR_AUTOTILE_TABLE;
+        var kind = Tilemap.getAutotileKind(tileId);
+        var shape = Tilemap.getAutotileShape(tileId);
+        var tx = kind % 8;
+        var ty = Math.floor(kind / 8);
+        var setNumber = 1;
+        var bx = tx * 2;
+        var by = (ty - 2) * 3;
+        var table = autotileTable[shape];
+        var w1 = this._tileWidth / 2;
+        var h1 = this._tileHeight / 2;
+        for (var i = 0; i < 2; i++) {
+            var qsx = table[2 + i][0];
+            var qsy = table[2 + i][1];
+            var sx1 = (bx * 2 + qsx) * w1;
+            var sy1 = (by * 2 + qsy) * h1 + h1 / 2;
+            var dx1 = dx + (i % 2) * w1;
+            var dy1 = dy + Math.floor(i / 2) * h1;
+            layer.addRect(setNumber, sx1, sy1, dx1, dy1, w1, h1/2);
+        }
+    }
+};
+
+/**
+ * @method _drawShadow
+ * @param {Number} shadowBits
+ * @param {Number} dx
+ * @param {Number} dy
+ * @private
+ */
+ShaderTilemap.prototype._drawShadow = function(layer, shadowBits, dx, dy) {
+    if (shadowBits & 0x0f) {
+        var w1 = this._tileWidth / 2;
+        var h1 = this._tileHeight / 2;
+        for (var i = 0; i < 4; i++) {
+            if (shadowBits & (1 << i)) {
+                var dx1 = dx + (i % 2) * w1;
+                var dy1 = dy + Math.floor(i / 2) * h1;
+                layer.addRect(-1, 0, 0, dx1, dy1, w1, h1);
+            }
+        }
+    }
+};
+//-----------------------------------------------------------------------------
+/**
  * The sprite object for a tiling image.
  *
  * @class TilingSprite
@@ -4678,19 +5903,19 @@ function TilingSprite() {
     this.initialize.apply(this, arguments);
 }
 
-TilingSprite.prototype = Object.create(PIXI.TilingSprite.prototype);
+TilingSprite.prototype = Object.create(PIXI.extras.PictureTilingSprite.prototype);
 TilingSprite.prototype.constructor = TilingSprite;
 
 TilingSprite.prototype.initialize = function(bitmap) {
     var texture = new PIXI.Texture(new PIXI.BaseTexture());
 
-    PIXI.TilingSprite.call(this, texture);
+    PIXI.extras.PictureTilingSprite.call(this, texture);
 
     this._bitmap = null;
     this._width = 0;
     this._height = 0;
     this._frame = new Rectangle();
-
+    this.spriteId = Sprite._counter++;
     /**
      * The origin point of the tiling sprite for scrolling.
      *
@@ -4700,6 +5925,40 @@ TilingSprite.prototype.initialize = function(bitmap) {
     this.origin = new Point();
 
     this.bitmap = bitmap;
+};
+
+TilingSprite.prototype._renderCanvas_PIXI = PIXI.extras.PictureTilingSprite.prototype._renderCanvas;
+TilingSprite.prototype._renderWebGL_PIXI = PIXI.extras.PictureTilingSprite.prototype._renderWebGL;
+
+/**
+ * @method _renderCanvas
+ * @param {Object} renderer
+ * @private
+ */
+TilingSprite.prototype._renderCanvas = function(renderer) {
+    if (this._bitmap) {
+        this._bitmap.touch();
+    }
+    if (this.texture.frame.width > 0 && this.texture.frame.height > 0) {
+        this._renderCanvas_PIXI(renderer);
+    }
+};
+
+/**
+ * @method _renderWebGL
+ * @param {Object} renderer
+ * @private
+ */
+TilingSprite.prototype._renderWebGL = function(renderer) {
+    if (this._bitmap) {
+        this._bitmap.touch();
+    }
+    if (this.texture.frame.width > 0 && this.texture.frame.height > 0) {
+        if (this._bitmap) {
+            this._bitmap.checkDirty();
+        }
+        this._renderWebGL_PIXI(renderer);
+    }
 };
 
 /**
@@ -4718,7 +5977,7 @@ Object.defineProperty(TilingSprite.prototype, 'bitmap', {
             if (this._bitmap) {
                 this._bitmap.addLoadListener(this._onBitmapLoad.bind(this));
             } else {
-                this.texture.setFrame(Rectangle.emptyRectangle);
+                this.texture.frame = Rectangle.emptyRectangle;
             }
         }
     },
@@ -4794,12 +6053,10 @@ TilingSprite.prototype.setFrame = function(x, y, width, height) {
 TilingSprite.prototype.updateTransform = function() {
     this.tilePosition.x = Math.round(-this.origin.x);
     this.tilePosition.y = Math.round(-this.origin.y);
-    if (!this.tilingTexture) {
-        this.originalTexture = null;
-        this.generateTilingTexture(true);
-    }
-    PIXI.TilingSprite.prototype.updateTransform.call(this);
+    this.updateTransformTS();
 };
+
+TilingSprite.prototype.updateTransformTS = PIXI.extras.TilingSprite.prototype.updateTransform;
 
 /**
  * @method _onBitmapLoad
@@ -4820,11 +6077,28 @@ TilingSprite.prototype._refresh = function() {
         frame.width = this._bitmap.width;
         frame.height = this._bitmap.height;
     }
-    var lastTrim = this.texture.trim;
-    this.texture.trim = frame;
-    this.texture.setFrame(frame);
-    this.texture.trim = lastTrim;
+    this.texture.frame = frame;
+    this.texture._updateID++;
     this.tilingTexture = null;
+};
+
+
+TilingSprite.prototype._speedUpCustomBlendModes = Sprite.prototype._speedUpCustomBlendModes;
+
+/**
+ * @method _renderWebGL
+ * @param {Object} renderer
+ * @private
+ */
+TilingSprite.prototype._renderWebGL = function(renderer) {
+    if (this._bitmap) {
+        this._bitmap.touch();
+        this._bitmap.checkDirty();
+    }
+
+    this._speedUpCustomBlendModes(renderer);
+
+    this._renderWebGL_PIXI(renderer);
 };
 
 // The important members from Pixi.js
@@ -4861,19 +6135,14 @@ function ScreenSprite() {
     this.initialize.apply(this, arguments);
 }
 
-ScreenSprite.prototype = Object.create(PIXI.Sprite.prototype);
+ScreenSprite.prototype = Object.create(PIXI.Container.prototype);
 ScreenSprite.prototype.constructor = ScreenSprite;
 
-ScreenSprite.prototype.initialize = function() {
-    var texture = new PIXI.Texture(new PIXI.BaseTexture());
+ScreenSprite.prototype.initialize = function () {
+    PIXI.Container.call(this);
 
-    PIXI.Sprite.call(this, texture);
-
-    this._bitmap = new Bitmap(1, 1);
-    this.texture.baseTexture = this._bitmap.baseTexture;
-    this.texture.setFrame(new Rectangle(0, 0, 1, 1));
-    this.scale.x = Graphics.width;
-    this.scale.y = Graphics.height;
+    this._graphics = new PIXI.Graphics();
+    this.addChild(this._graphics);
     this.opacity = 0;
 
     this._red = -1;
@@ -4890,11 +6159,42 @@ ScreenSprite.prototype.initialize = function() {
  * @type Number
  */
 Object.defineProperty(ScreenSprite.prototype, 'opacity', {
-    get: function() {
+    get: function () {
         return this.alpha * 255;
     },
-    set: function(value) {
+    set: function (value) {
         this.alpha = value.clamp(0, 255) / 255;
+    },
+    configurable: true
+});
+
+ScreenSprite.YEPWarned = false;
+ScreenSprite.warnYep = function () {
+    if (!ScreenSprite.YEPWarned) {
+        console.log("Deprecation warning. Please update YEP_CoreEngine. ScreenSprite is not a sprite, it has graphics inside.");
+        ScreenSprite.YEPWarned = true;
+    }
+};
+
+Object.defineProperty(ScreenSprite.prototype, 'anchor', {
+    get: function () {
+        ScreenSprite.warnYep();
+        this.scale.x = 1;
+        this.scale.y = 1;
+        return {x: 0, y: 0};
+    },
+    set: function (value) {
+        this.alpha = value.clamp(0, 255) / 255;
+    },
+    configurable: true
+});
+
+Object.defineProperty(ScreenSprite.prototype, 'blendMode', {
+    get: function () {
+        return this._graphics.blendMode;
+    },
+    set: function (value) {
+        this._graphics.blendMode = value;
     },
     configurable: true
 });
@@ -4904,7 +6204,7 @@ Object.defineProperty(ScreenSprite.prototype, 'opacity', {
  *
  * @method setBlack
  */
-ScreenSprite.prototype.setBlack = function() {
+ScreenSprite.prototype.setBlack = function () {
     this.setColor(0, 0, 0);
 };
 
@@ -4913,7 +6213,7 @@ ScreenSprite.prototype.setBlack = function() {
  *
  * @method setWhite
  */
-ScreenSprite.prototype.setWhite = function() {
+ScreenSprite.prototype.setWhite = function () {
     this.setColor(255, 255, 255);
 };
 
@@ -4925,7 +6225,7 @@ ScreenSprite.prototype.setWhite = function() {
  * @param {Number} g The green value in the range (0, 255)
  * @param {Number} b The blue value in the range (0, 255)
  */
-ScreenSprite.prototype.setColor = function(r, g, b) {
+ScreenSprite.prototype.setColor = function (r, g, b) {
     if (this._red !== r || this._green !== g || this._blue !== b) {
         r = Math.round(r || 0).clamp(0, 255);
         g = Math.round(g || 0).clamp(0, 255);
@@ -4934,25 +6234,13 @@ ScreenSprite.prototype.setColor = function(r, g, b) {
         this._green = g;
         this._blue = b;
         this._colorText = Utils.rgbToCssColor(r, g, b);
-        this._bitmap.fillAll(this._colorText);
-    }
-};
 
-/**
- * @method _renderCanvas
- * @param {Object} renderSession
- * @private
- */
-ScreenSprite.prototype._renderCanvas = function(renderSession) {
-    if (this.visible && this.alpha > 0) {
-        var context = renderSession.context;
-        var t = this.worldTransform;
-        var r = renderSession.resolution;
-        context.setTransform(t.a, t.b, t.c, t.d, t.tx * r, t.ty * r);
-        context.globalCompositeOperation = PIXI.blendModesCanvas[this.blendMode];
-        context.globalAlpha = this.alpha;
-        context.fillStyle = this._colorText;
-        context.fillRect(0, 0, Graphics.width, Graphics.height);
+        var graphics = this._graphics;
+        graphics.clear();
+        var intColor = (r << 16) | (g << 8) | b;
+        graphics.beginFill(intColor, 1);
+        //whole screen with zoom. BWAHAHAHAHA
+        graphics.drawRect(-Graphics.width * 5, -Graphics.height * 5, Graphics.width * 10, Graphics.height * 10);
     }
 };
 
@@ -4967,11 +6255,11 @@ function Window() {
     this.initialize.apply(this, arguments);
 }
 
-Window.prototype = Object.create(PIXI.DisplayObjectContainer.prototype);
+Window.prototype = Object.create(PIXI.Container.prototype);
 Window.prototype.constructor = Window;
 
 Window.prototype.initialize = function() {
-    PIXI.DisplayObjectContainer.call(this);
+    PIXI.Container.call(this);
 
     this._isWindow = true;
     this._windowskin = null;
@@ -5321,7 +6609,7 @@ Window.prototype.updateTransform = function() {
     this._updateArrows();
     this._updatePauseSign();
     this._updateContents();
-    PIXI.DisplayObjectContainer.prototype.updateTransform.call(this);
+    PIXI.Container.prototype.updateTransform.call(this);
 };
 
 /**
@@ -5329,7 +6617,7 @@ Window.prototype.updateTransform = function() {
  * @private
  */
 Window.prototype._createAllParts = function() {
-    this._windowSpriteContainer = new PIXI.DisplayObjectContainer();
+    this._windowSpriteContainer = new PIXI.Container();
     this._windowBackSprite = new Sprite();
     this._windowCursorSprite = new Sprite();
     this._windowFrameSprite = new Sprite();
@@ -5654,18 +6942,35 @@ function WindowLayer() {
     this.initialize.apply(this, arguments);
 }
 
-WindowLayer.prototype = Object.create(PIXI.DisplayObjectContainer.prototype);
+WindowLayer.prototype = Object.create(PIXI.Container.prototype);
 WindowLayer.prototype.constructor = WindowLayer;
 
 WindowLayer.prototype.initialize = function() {
-    PIXI.DisplayObjectContainer.call(this);
+    PIXI.Container.call(this);
     this._width = 0;
     this._height = 0;
     this._tempCanvas = null;
-    this._vertexBuffer = null;
     this._translationMatrix = [1, 0, 0, 0, 1, 0, 0, 0, 1];
-    this._dummySprite = new Sprite(new Bitmap(1, 1));
+
+    this._windowMask = new PIXI.Graphics();
+    this._windowMask.beginFill(0xffffff, 1);
+    this._windowMask.drawRect(0, 0, 0, 0);
+    this._windowMask.endFill();
+    this._windowRect = this._windowMask.graphicsData[0].shape;
+
+    this._renderSprite = null;
+    this.filterArea = new PIXI.Rectangle();
+    this.filters = [WindowLayer.voidFilter];
+
+    //temporary fix for memory leak bug
+    this.on('removed', this.onRemoveAsAChild);
 };
+
+WindowLayer.prototype.onRemoveAsAChild = function() {
+    this.removeChildren();
+}
+
+WindowLayer.voidFilter = new PIXI.filters.VoidFilter();
 
 /**
  * The width of the window layer in pixels.
@@ -5733,8 +7038,8 @@ WindowLayer.prototype.update = function() {
  * @param {Object} renderSession
  * @private
  */
-WindowLayer.prototype._renderCanvas = function(renderSession) {
-    if (!this.visible) {
+WindowLayer.prototype.renderCanvas = function(renderer) {
+    if (!this.visible || !this.renderable) {
         return;
     }
 
@@ -5745,7 +7050,7 @@ WindowLayer.prototype._renderCanvas = function(renderSession) {
     this._tempCanvas.width = Graphics.width;
     this._tempCanvas.height = Graphics.height;
 
-    var realCanvasContext = renderSession.context;
+    var realCanvasContext = renderer.context;
     var context = this._tempCanvas.getContext('2d');
 
     context.save();
@@ -5755,29 +7060,29 @@ WindowLayer.prototype._renderCanvas = function(renderSession) {
     context.closePath();
     context.clip();
 
-    renderSession.context = context;
+    renderer.context = context;
 
     for (var i = 0; i < this.children.length; i++) {
         var child = this.children[i];
         if (child._isWindow && child.visible && child.openness > 0) {
-            this._canvasClearWindowRect(renderSession, child);
+            this._canvasClearWindowRect(renderer, child);
             context.save();
-            child._renderCanvas(renderSession);
+            child.renderCanvas(renderer);
             context.restore();
         }
     }
 
     context.restore();
 
-    renderSession.context = realCanvasContext;
-    renderSession.context.setTransform(1, 0, 0, 1, 0, 0);
-    renderSession.context.globalCompositeOperation = 'source-over';
-    renderSession.context.globalAlpha = 1;
-    renderSession.context.drawImage(this._tempCanvas, 0, 0);
+    renderer.context = realCanvasContext;
+    renderer.context.setTransform(1, 0, 0, 1, 0, 0);
+    renderer.context.globalCompositeOperation = 'source-over';
+    renderer.context.globalAlpha = 1;
+    renderer.context.drawImage(this._tempCanvas, 0, 0);
 
     for (var j = 0; j < this.children.length; j++) {
         if (!this.children[j]._isWindow) {
-            this.children[j]._renderCanvas(renderSession);
+            this.children[j].renderCanvas(renderer);
         }
     }
 };
@@ -5801,111 +7106,63 @@ WindowLayer.prototype._canvasClearWindowRect = function(renderSession, window) {
  * @param {Object} renderSession
  * @private
  */
-WindowLayer.prototype._renderWebGL = function(renderSession) {
-    if (!this.visible) {
+WindowLayer.prototype.renderWebGL = function(renderer) {
+    if (!this.visible || !this.renderable) {
         return;
     }
 
-    var gl = renderSession.gl;
-
-    if (!this._vertexBuffer) {
-        this._vertexBuffer = gl.createBuffer();
+    if (this.children.length==0) {
+        return;
     }
 
-    this._dummySprite._renderWebGL(renderSession);
+    renderer.flush();
+    this.filterArea.copy(this);
+    renderer.filterManager.pushFilter(this, this.filters);
+    renderer.currentRenderer.start();
 
-    renderSession.spriteBatch.stop();
-    gl.enable(gl.STENCIL_TEST);
-    gl.clear(gl.STENCIL_BUFFER_BIT);
-    this._webglMaskOutside(renderSession);
-    renderSession.spriteBatch.start();
+    var shift = new PIXI.Point();
+    var rt = renderer._activeRenderTarget;
+    var projectionMatrix = rt.projectionMatrix;
+    shift.x = Math.round((projectionMatrix.tx + 1) / 2 * rt.sourceFrame.width);
+    shift.y = Math.round((projectionMatrix.ty + 1) / 2 * rt.sourceFrame.height);
 
-    for (var i = this.children.length - 1; i >= 0; i--) {
+    for (var i = 0; i < this.children.length; i++) {
         var child = this.children[i];
         if (child._isWindow && child.visible && child.openness > 0) {
-            gl.stencilFunc(gl.EQUAL, 0, 0xFF);
-            child._renderWebGL(renderSession);
-            renderSession.spriteBatch.stop();
-            this._webglMaskWindow(renderSession, child);
-            renderSession.spriteBatch.start();
+            this._maskWindow(child, shift);
+            renderer.maskManager.pushScissorMask(this, this._windowMask);
+            renderer.clear();
+            renderer.maskManager.popScissorMask();
+            renderer.currentRenderer.start();
+            child.renderWebGL(renderer);
+            renderer.currentRenderer.flush();
         }
     }
 
-    gl.disable(gl.STENCIL_TEST);
+    renderer.flush();
+    renderer.filterManager.popFilter();
+    renderer.maskManager.popScissorMask();
 
     for (var j = 0; j < this.children.length; j++) {
         if (!this.children[j]._isWindow) {
-            this.children[j]._renderWebGL(renderSession);
+            this.children[j].renderWebGL(renderer);
         }
     }
 };
 
 /**
- * @method _webglMaskOutside
- * @param {Object} renderSession
- * @private
- */
-WindowLayer.prototype._webglMaskOutside = function(renderSession) {
-    var x1 = this.x;
-    var y1 = this.y;
-    var x2 = this.x + this.width;
-    var y2 = this.y + this.height;
-    this._webglMaskRect(renderSession, 0, 0, Graphics.width, y1);
-    this._webglMaskRect(renderSession, 0, y2, Graphics.width, Graphics.height - y2);
-    this._webglMaskRect(renderSession, 0, 0, x1, Graphics.height);
-    this._webglMaskRect(renderSession, x2, 0, Graphics.width - x2, Graphics.height);
-};
-
-/**
- * @method _webglMaskWindow
- * @param {Object} renderSession
+ * @method _maskWindow
  * @param {Window} window
  * @private
  */
-WindowLayer.prototype._webglMaskWindow = function(renderSession, window) {
-    var rx = this.x + window.x;
-    var ry = this.y + window.y + window.height / 2 * (1 - window._openness / 255);
-    var rw = window.width;
-    var rh = window.height * window._openness / 255;
-    this._webglMaskRect(renderSession, rx, ry, rw, rh);
-};
-
-/**
- * @method _webglMaskRect
- * @param {Object} renderSession
- * @param {Number} x
- * @param {Number} y
- * @param {Number} w
- * @param {Number} h
- * @private
- */
-WindowLayer.prototype._webglMaskRect = function(renderSession, x, y, w, h) {
-    if (w > 0 && h > 0) {
-        var gl = renderSession.gl;
-
-        var projection = renderSession.projection;
-        var offset = renderSession.offset;
-        var shader = renderSession.shaderManager.primitiveShader;
-
-        renderSession.shaderManager.setShader(shader);
-
-        gl.uniformMatrix3fv(shader.translationMatrix, false, this._translationMatrix);
-        gl.uniform1f(shader.flipY, 1);
-        gl.uniform2f(shader.projectionVector, projection.x, -projection.y);
-        gl.uniform2f(shader.offsetVector, -offset.x, -offset.y);
-
-        gl.stencilFunc(gl.EQUAL, 0, 0xFF);
-        gl.stencilOp(gl.KEEP, gl.KEEP, gl.INCR);
-
-        var data = new Float32Array([x, y, x+w, y, x, y+h, x, y+h, x+w, y, x+w, y+h]);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this._vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(shader.aVertexPosition);
-        gl.vertexAttribPointer(shader.aVertexPosition, 2, gl.FLOAT, false, 0, 0);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
-    }
+WindowLayer.prototype._maskWindow = function(window, shift) {
+    this._windowMask._currentBounds = null;
+    this._windowMask.boundsDirty = true;
+    var rect = this._windowRect;
+    rect.x = this.x + shift.x + window.x;
+    rect.y = this.x + shift.y + window.y + window.height / 2 * (1 - window._openness / 255);
+    rect.width = window.width;
+    rect.height = window.height * window._openness / 255;
 };
 
 // The important members from Pixi.js
@@ -5982,11 +7239,11 @@ function Weather() {
     this.initialize.apply(this, arguments);
 }
 
-Weather.prototype = Object.create(PIXI.DisplayObjectContainer.prototype);
+Weather.prototype = Object.create(PIXI.Container.prototype);
 Weather.prototype.constructor = Weather;
 
 Weather.prototype.initialize = function() {
-    PIXI.DisplayObjectContainer.call(this);
+    PIXI.Container.call(this);
 
     this._width = Graphics.width;
     this._height = Graphics.height;
@@ -6176,46 +7433,15 @@ Weather.prototype._rebornSprite = function(sprite) {
  * The color matrix filter for WebGL.
  *
  * @class ToneFilter
+ * @extends PIXI.Filter
  * @constructor
  */
 function ToneFilter() {
-    PIXI.AbstractFilter.call(this);
-    this.initialize.apply(this, arguments);
+    PIXI.filters.ColorMatrixFilter.call(this);
 }
 
-ToneFilter.prototype = Object.create(PIXI.AbstractFilter.prototype);
+ToneFilter.prototype = Object.create(PIXI.filters.ColorMatrixFilter.prototype);
 ToneFilter.prototype.constructor = ToneFilter;
-
-ToneFilter.prototype.initialize = function() {
-    this.passes = [this];
-
-    this.uniforms = {
-        matrix: {
-            type: 'mat4',
-            value: [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]
-        }
-    };
-
-    this.fragmentSrc = [
-        'precision mediump float;',
-        'varying vec2 vTextureCoord;',
-        'varying vec4 vColor;',
-        'uniform mat4 matrix;',
-        'uniform sampler2D uSampler;',
-        'void main(void) {',
-        '   gl_FragColor = texture2D(uSampler, vTextureCoord) * matrix;',
-        '}'
-    ];
-};
-
-/**
- * Resets the filter.
- *
- * @method reset
- */
-ToneFilter.prototype.reset = function() {
-    this.uniforms.matrix.value = [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
-};
 
 /**
  * Changes the hue.
@@ -6224,27 +7450,7 @@ ToneFilter.prototype.reset = function() {
  * @param {Number} value The hue value in the range (-360, 360)
  */
 ToneFilter.prototype.adjustHue = function(value) {
-    value = (value || 0) / 180;
-
-    if (value !== 0) {
-        var c = Math.cos(value * Math.PI);
-        var s = Math.sin(value * Math.PI);
-        var a00 = 0.213 + c * 0.787 - s * 0.213;
-        var a01 = 0.715 - c * 0.715 - s * 0.715;
-        var a02 = 0.072 - c * 0.072 + s * 0.928;
-        var a10 = 0.213 - c * 0.213 + s * 0.143;
-        var a11 = 0.715 + c * 0.285 + s * 0.140;
-        var a12 = 0.072 - c * 0.072 - s * 0.283;
-        var a20 = 0.213 - c * 0.213 - s * 0.787;
-        var a21 = 0.715 - c * 0.715 + s * 0.715;
-        var a22 = 0.072 + c * 0.928 + s * 0.072;
-        this._multiplyMatrix([
-            a00, a01, a02, 0,
-            a10, a11, a12, 0,
-            a20, a21, a22, 0,
-              0,   0,   0, 1
-        ]);
-    }
+    this.hue(value, true);
 };
 
 /**
@@ -6255,25 +7461,7 @@ ToneFilter.prototype.adjustHue = function(value) {
  */
 ToneFilter.prototype.adjustSaturation = function(value) {
     value = (value || 0).clamp(-255, 255) / 255;
-
-    if (value !== 0) {
-        var a = 1 + value;
-        var a00 = 0.213 + 0.787 * a;
-        var a01 = 0.715 - 0.715 * a;
-        var a02 = 0.072 - 0.072 * a;
-        var a10 = 0.213 - 0.213 * a;
-        var a11 = 0.715 + 0.285 * a;
-        var a12 = 0.072 - 0.072 * a;
-        var a20 = 0.213 - 0.213 * a;
-        var a21 = 0.715 - 0.715 * a;
-        var a22 = 0.072 + 0.928 * a;
-        this._multiplyMatrix([
-            a00, a01, a02, 0,
-            a10, a11, a12, 0,
-            a20, a21, a22, 0,
-              0,   0,   0, 1
-        ]);
-    }
+    this.saturate(value, true);
 };
 
 /**
@@ -6290,35 +7478,14 @@ ToneFilter.prototype.adjustTone = function(r, g, b) {
     b = (b || 0).clamp(-255, 255) / 255;
 
     if (r !== 0 || g !== 0 || b !== 0) {
-        this._multiplyMatrix([
-            1, 0, 0, r,
-            0, 1, 0, g,
-            0, 0, 1, b,
-            0, 0, 0, 1
-        ]);
-    }
-};
+        var matrix = [
+            1, 0, 0, r, 0,
+            0, 1, 0, g, 0,
+            0, 0, 1, b, 0,
+            0, 0, 0, 1, 0
+        ];
 
-/**
- * @method _multiplyMatrix
- * @param {Array} matrix
- * @private
- */
-ToneFilter.prototype._multiplyMatrix = function(matrix) {
-    var value = this.uniforms.matrix.value;
-    var temp = [];
-
-    for (var i = 0; i < 4; i++) {
-        for (var m = 0; m < 4; m++) {
-            temp[m] = value[i * 4 + m];
-        }
-        for (var j = 0; j < 4; j++) {
-            var val = 0;
-            for (var n = 0; n < 4; n++) {
-                val += matrix[n * 4 + j] * temp[n];
-            }
-            value[i * 4 + j] = val;
-        }
+        this._loadMatrix(matrix, true);
     }
 };
 
@@ -6333,11 +7500,11 @@ function ToneSprite() {
     this.initialize.apply(this, arguments);
 }
 
-ToneSprite.prototype = Object.create(PIXI.DisplayObject.prototype);
+ToneSprite.prototype = Object.create(PIXI.Container.prototype);
 ToneSprite.prototype.constructor = ToneSprite;
 
 ToneSprite.prototype.initialize = function() {
-    PIXI.DisplayObject.call(this);
+    PIXI.Container.call(this);
     this.clear();
 };
 
@@ -6374,11 +7541,11 @@ ToneSprite.prototype.setTone = function(r, g, b, gray) {
  * @param {Object} renderSession
  * @private
  */
-ToneSprite.prototype._renderCanvas = function(renderSession) {
+ToneSprite.prototype._renderCanvas = function(renderer) {
     if (this.visible) {
-        var context = renderSession.context;
+        var context = renderer.context;
         var t = this.worldTransform;
-        var r = renderSession.resolution;
+        var r = renderer.resolution;
         var width = Graphics.width;
         var height = Graphics.height;
         context.save();
@@ -6423,7 +7590,7 @@ ToneSprite.prototype._renderCanvas = function(renderSession) {
  * @param {Object} renderSession
  * @private
  */
-ToneSprite.prototype._renderWebGL = function(renderSession) {
+ToneSprite.prototype._renderWebGL = function(renderer) {
     // Not supported
 };
 
@@ -6438,11 +7605,11 @@ function Stage() {
     this.initialize.apply(this, arguments);
 }
 
-Stage.prototype = Object.create(PIXI.Stage.prototype);
+Stage.prototype = Object.create(PIXI.Container.prototype);
 Stage.prototype.constructor = Stage;
 
 Stage.prototype.initialize = function() {
-    PIXI.Stage.call(this);
+    PIXI.Container.call(this);
 
     // The interactive flag causes a memory leak.
     this.interactive = false;
@@ -6500,15 +7667,26 @@ function WebAudio() {
     this.initialize.apply(this, arguments);
 }
 
+WebAudio._standAlone = (function(top){
+    return !top.ResourceHandler;
+})(this);
+
 WebAudio.prototype.initialize = function(url) {
     if (!WebAudio._initialized) {
         WebAudio.initialize();
     }
     this.clear();
+
+    if(!WebAudio._standAlone){
+        this._loader = ResourceHandler.createLoader(url, this._load.bind(this, url), function() {
+            this._hasError = true;
+        }.bind(this));
+    }
     this._load(url);
     this._url = url;
 };
 
+WebAudio._masterVolume   = 1;
 WebAudio._context        = null;
 WebAudio._masterGainNode = null;
 WebAudio._initialized    = false;
@@ -6564,6 +7742,20 @@ WebAudio.canPlayM4a = function() {
 };
 
 /**
+ * Sets the master volume of the all audio.
+ *
+ * @static
+ * @method setMasterVolume
+ * @param {Number} value Master volume (min: 0, max: 1)
+ */
+WebAudio.setMasterVolume = function(value) {
+    this._masterVolume = value;
+    if (this._masterGainNode) {
+        this._masterGainNode.gain.setValueAtTime(this._masterVolume, this._context.currentTime);
+    }
+};
+
+/**
  * @static
  * @method _createContext
  * @private
@@ -6602,7 +7794,7 @@ WebAudio._createMasterGainNode = function() {
     var context = WebAudio._context;
     if (context) {
         this._masterGainNode = context.createGain();
-        this._masterGainNode.gain.value = 1;
+        this._masterGainNode.gain.setValueAtTime(this._masterVolume, context.currentTime);
         this._masterGainNode.connect(context.destination);
     }
 };
@@ -6613,6 +7805,19 @@ WebAudio._createMasterGainNode = function() {
  * @private
  */
 WebAudio._setupEventHandlers = function() {
+    var resumeHandler = function() {
+        var context = WebAudio._context;
+        if (context && context.state === "suspended" && typeof context.resume === "function") {
+            context.resume().then(function() {
+                WebAudio._onTouchStart();
+            })
+        } else {
+            WebAudio._onTouchStart();
+        }
+    };
+    document.addEventListener("keydown", resumeHandler);
+    document.addEventListener("mousedown", resumeHandler);
+    document.addEventListener("touchend", resumeHandler);
     document.addEventListener('touchstart', this._onTouchStart.bind(this));
     document.addEventListener('visibilitychange', this._onVisibilityChange.bind(this));
 };
@@ -6686,8 +7891,8 @@ WebAudio._fadeIn = function(duration) {
     if (this._masterGainNode) {
         var gain = this._masterGainNode.gain;
         var currentTime = WebAudio._context.currentTime;
-        gain.setValueAtTime(gain.value, currentTime);
-        gain.linearRampToValueAtTime(1, currentTime + duration);
+        gain.setValueAtTime(0, currentTime);
+        gain.linearRampToValueAtTime(this._masterVolume, currentTime + duration);
     }
 };
 
@@ -6701,7 +7906,7 @@ WebAudio._fadeOut = function(duration) {
     if (this._masterGainNode) {
         var gain = this._masterGainNode.gain;
         var currentTime = WebAudio._context.currentTime;
-        gain.setValueAtTime(gain.value, currentTime);
+        gain.setValueAtTime(this._masterVolume, currentTime);
         gain.linearRampToValueAtTime(0, currentTime + duration);
     }
 };
@@ -6758,7 +7963,7 @@ Object.defineProperty(WebAudio.prototype, 'volume', {
     set: function(value) {
         this._volume = value;
         if (this._gainNode) {
-            this._gainNode.gain.value = this._volume;
+            this._gainNode.gain.setValueAtTime(this._volume, WebAudio._context.currentTime);
         }
     },
     configurable: true
@@ -6901,7 +8106,7 @@ WebAudio.prototype.fadeOut = function(duration) {
     if (this._gainNode) {
         var gain = this._gainNode.gain;
         var currentTime = WebAudio._context.currentTime;
-        gain.setValueAtTime(gain.value, currentTime);
+        gain.setValueAtTime(this._volume, currentTime);
         gain.linearRampToValueAtTime(0, currentTime + duration);
     }
     this._autoPlay = false;
@@ -6954,6 +8159,7 @@ WebAudio.prototype.addStopListener = function(listner) {
 WebAudio.prototype._load = function(url) {
     if (WebAudio._context) {
         var xhr = new XMLHttpRequest();
+        if(Decrypter.hasEncryptedAudio) url = Decrypter.extToEncryptExt(url);
         xhr.open('GET', url);
         xhr.responseType = 'arraybuffer';
         xhr.onload = function() {
@@ -6961,9 +8167,7 @@ WebAudio.prototype._load = function(url) {
                 this._onXhrLoad(xhr);
             }
         }.bind(this);
-        xhr.onerror = function() {
-            this._hasError = true;
-        }.bind(this);
+        xhr.onerror = this._loader || function(){this._hasError = true;}.bind(this);
         xhr.send();
     }
 };
@@ -6974,9 +8178,10 @@ WebAudio.prototype._load = function(url) {
  * @private
  */
 WebAudio.prototype._onXhrLoad = function(xhr) {
-    var array = new Uint8Array(xhr.response);
-    this._readLoopComments(array);
-    WebAudio._context.decodeAudioData(xhr.response, function(buffer) {
+    var array = xhr.response;
+    if(Decrypter.hasEncryptedAudio) array = Decrypter.decryptArrayBuffer(array);
+    this._readLoopComments(new Uint8Array(array));
+    WebAudio._context.decodeAudioData(array, function(buffer) {
         this._buffer = buffer;
         this._totalTime = buffer.duration;
         if (this._loopLength > 0 && this._sampleRate > 0) {
@@ -7017,9 +8222,9 @@ WebAudio.prototype._createNodes = function() {
     this._sourceNode.buffer = this._buffer;
     this._sourceNode.loopStart = this._loopStart;
     this._sourceNode.loopEnd = this._loopStart + this._loopLength;
-    this._sourceNode.playbackRate.value = this._pitch;
+    this._sourceNode.playbackRate.setValueAtTime(this._pitch, context.currentTime);
     this._gainNode = context.createGain();
-    this._gainNode.gain.value = this._volume;
+    this._gainNode.gain.setValueAtTime(this._volume, context.currentTime);
     this._pannerNode = context.createPanner();
     this._pannerNode.panningModel = 'equalpower';
     this._updatePanner();
@@ -7276,6 +8481,10 @@ Html5Audio.setup = function (url) {
         this.initialize();
     }
     this.clear();
+
+    if(Decrypter.hasEncryptedAudio && this._audioElement.src) {
+        window.URL.revokeObjectURL(this._audioElement.src);
+    }
     this._url = url;
 };
 
@@ -7706,6 +8915,11 @@ function JsonEx() {
  */
 JsonEx.maxDepth = 100;
 
+JsonEx._id = 1;
+JsonEx._generateId = function(){
+    return JsonEx._id++;
+};
+
 /**
  * Converts an object to a JSON string with object information.
  *
@@ -7715,7 +8929,23 @@ JsonEx.maxDepth = 100;
  * @return {String} The JSON string
  */
 JsonEx.stringify = function(object) {
-    return JSON.stringify(this._encode(object));
+    var circular = [];
+    JsonEx._id = 1;
+    var json = JSON.stringify(this._encode(object, circular, 0));
+    this._cleanMetadata(object);
+    this._restoreCircularReference(circular);
+
+    return json;
+};
+
+JsonEx._restoreCircularReference = function(circulars){
+    circulars.forEach(function(circular){
+        var key = circular[0];
+        var value = circular[1];
+        var content = circular[2];
+
+        value[key] = content;
+    });
 };
 
 /**
@@ -7727,8 +8957,41 @@ JsonEx.stringify = function(object) {
  * @return {Object} The reconstructed object
  */
 JsonEx.parse = function(json) {
-    return this._decode(JSON.parse(json));
+    var circular = [];
+    var registry = {};
+    var contents = this._decode(JSON.parse(json), circular, registry);
+    this._cleanMetadata(contents);
+    this._linkCircularReference(contents, circular, registry);
+
+    return contents;
 };
+
+JsonEx._linkCircularReference = function(contents, circulars, registry){
+    circulars.forEach(function(circular){
+        var key = circular[0];
+        var value = circular[1];
+        var id = circular[2];
+
+        value[key] = registry[id];
+    });
+};
+
+JsonEx._cleanMetadata = function(object){
+    if(!object) return;
+
+    delete object['@'];
+    delete object['@c'];
+
+    if(typeof object === 'object'){
+        Object.keys(object).forEach(function(key){
+            var value = object[key];
+            if(typeof value === 'object'){
+                JsonEx._cleanMetadata(value);
+            }
+        });
+    }
+};
+
 
 /**
  * Makes a deep copy of the specified object.
@@ -7746,24 +9009,46 @@ JsonEx.makeDeepCopy = function(object) {
  * @static
  * @method _encode
  * @param {Object} value
+ * @param {Array} circular
  * @param {Number} depth
  * @return {Object}
  * @private
  */
-JsonEx._encode = function(value, depth) {
+JsonEx._encode = function(value, circular, depth) {
     depth = depth || 0;
     if (++depth >= this.maxDepth) {
         throw new Error('Object too deep');
     }
     var type = Object.prototype.toString.call(value);
     if (type === '[object Object]' || type === '[object Array]') {
+        value['@c'] = JsonEx._generateId();
+
         var constructorName = this._getConstructorName(value);
         if (constructorName !== 'Object' && constructorName !== 'Array') {
             value['@'] = constructorName;
         }
         for (var key in value) {
-            if (value.hasOwnProperty(key)) {
-                value[key] = this._encode(value[key], depth + 1);
+            if (value.hasOwnProperty(key) && !key.match(/^@./)) {
+                if(value[key] && typeof value[key] === 'object'){
+                    if(value[key]['@c']){
+                        circular.push([key, value, value[key]]);
+                        value[key] = {'@r': value[key]['@c']};
+                    }else{
+                        value[key] = this._encode(value[key], circular, depth + 1);
+
+                        if(value[key] instanceof Array){
+                            //wrap array
+                            circular.push([key, value, value[key]]);
+
+                            value[key] = {
+                                '@c': value[key]['@c'],
+                                '@a': value[key]
+                            };
+                        }
+                    }
+                }else{
+                    value[key] = this._encode(value[key], circular, depth + 1);
+                }
             }
         }
     }
@@ -7775,12 +9060,16 @@ JsonEx._encode = function(value, depth) {
  * @static
  * @method _decode
  * @param {Object} value
+ * @param {Array} circular
+ * @param {Object} registry
  * @return {Object}
  * @private
  */
-JsonEx._decode = function(value) {
+JsonEx._decode = function(value, circular, registry) {
     var type = Object.prototype.toString.call(value);
     if (type === '[object Object]' || type === '[object Array]') {
+        registry[value['@c']] = value;
+
         if (value['@']) {
             var constructor = window[value['@']];
             if (constructor) {
@@ -7789,7 +9078,17 @@ JsonEx._decode = function(value) {
         }
         for (var key in value) {
             if (value.hasOwnProperty(key)) {
-                value[key] = this._decode(value[key]);
+                if(value[key] && value[key]['@a']){
+                    //object is array wrapper
+                    var body = value[key]['@a'];
+                    body['@c'] = value[key]['@c'];
+                    value[key] = body;
+                }
+                if(value[key] && value[key]['@r']){
+                    //object is reference
+                    circular.push([key, value, value[key]['@r']])
+                }
+                value[key] = this._decode(value[key], circular, registry);
             }
         }
     }
@@ -7835,4 +9134,179 @@ JsonEx._resetPrototype = function(value, prototype) {
         value = newValue;
     }
     return value;
+};
+
+
+function Decrypter() {
+    throw new Error('This is a static class');
+}
+
+Decrypter.hasEncryptedImages = false;
+Decrypter.hasEncryptedAudio = false;
+Decrypter._requestImgFile = [];
+Decrypter._headerlength = 16;
+Decrypter._xhrOk = 400;
+Decrypter._encryptionKey = "";
+Decrypter._ignoreList = [
+    "img/system/Window.png"
+];
+Decrypter.SIGNATURE = "5250474d56000000";
+Decrypter.VER = "000301";
+Decrypter.REMAIN = "0000000000";
+
+Decrypter.checkImgIgnore = function(url){
+    for(var cnt = 0; cnt < this._ignoreList.length; cnt++) {
+        if(url === this._ignoreList[cnt]) return true;
+    }
+    return false;
+};
+
+Decrypter.decryptImg = function(url, bitmap) {
+    url = this.extToEncryptExt(url);
+
+    var requestFile = new XMLHttpRequest();
+    requestFile.open("GET", url);
+    requestFile.responseType = "arraybuffer";
+    requestFile.send();
+
+    requestFile.onload = function () {
+        if(this.status < Decrypter._xhrOk) {
+            var arrayBuffer = Decrypter.decryptArrayBuffer(requestFile.response);
+            bitmap._image.src = Decrypter.createBlobUrl(arrayBuffer);
+            bitmap._image.addEventListener('load', bitmap._loadListener = Bitmap.prototype._onLoad.bind(bitmap));
+            bitmap._image.addEventListener('error', bitmap._errorListener = bitmap._loader || Bitmap.prototype._onError.bind(bitmap));
+        }
+    };
+
+    requestFile.onerror = function () {
+        if (bitmap._loader) {
+            bitmap._loader();
+        } else {
+            bitmap._onError();
+        }
+    };
+};
+
+Decrypter.decryptHTML5Audio = function(url, bgm, pos) {
+    var requestFile = new XMLHttpRequest();
+    requestFile.open("GET", url);
+    requestFile.responseType = "arraybuffer";
+    requestFile.send();
+
+    requestFile.onload = function () {
+        if(this.status < Decrypter._xhrOk) {
+            var arrayBuffer = Decrypter.decryptArrayBuffer(requestFile.response);
+            var url = Decrypter.createBlobUrl(arrayBuffer);
+            AudioManager.createDecryptBuffer(url, bgm, pos);
+        }
+    };
+};
+
+Decrypter.cutArrayHeader = function(arrayBuffer, length) {
+    return arrayBuffer.slice(length);
+};
+
+Decrypter.decryptArrayBuffer = function(arrayBuffer) {
+    if (!arrayBuffer) return null;
+    var header = new Uint8Array(arrayBuffer, 0, this._headerlength);
+
+    var i;
+    var ref = this.SIGNATURE + this.VER + this.REMAIN;
+    var refBytes = new Uint8Array(16);
+    for (i = 0; i < this._headerlength; i++) {
+        refBytes[i] = parseInt("0x" + ref.substr(i * 2, 2), 16);
+    }
+    for (i = 0; i < this._headerlength; i++) {
+        if (header[i] !== refBytes[i]) {
+            throw new Error("Header is wrong");
+        }
+    }
+
+    arrayBuffer = this.cutArrayHeader(arrayBuffer, Decrypter._headerlength);
+    var view = new DataView(arrayBuffer);
+    this.readEncryptionkey();
+    if (arrayBuffer) {
+        var byteArray = new Uint8Array(arrayBuffer);
+        for (i = 0; i < this._headerlength; i++) {
+            byteArray[i] = byteArray[i] ^ parseInt(Decrypter._encryptionKey[i], 16);
+            view.setUint8(i, byteArray[i]);
+        }
+    }
+
+    return arrayBuffer;
+};
+
+Decrypter.createBlobUrl = function(arrayBuffer){
+    var blob = new Blob([arrayBuffer]);
+    return window.URL.createObjectURL(blob);
+};
+
+Decrypter.extToEncryptExt = function(url) {
+    var ext = url.split('.').pop();
+    var encryptedExt = ext;
+
+    if(ext === "ogg") encryptedExt = ".rpgmvo";
+    else if(ext === "m4a") encryptedExt = ".rpgmvm";
+    else if(ext === "png") encryptedExt = ".rpgmvp";
+    else encryptedExt = ext;
+
+    return url.slice(0, url.lastIndexOf(ext) - 1) + encryptedExt;
+};
+
+Decrypter.readEncryptionkey = function(){
+    this._encryptionKey = $dataSystem.encryptionKey.split(/(.{2})/).filter(Boolean);
+};
+
+//-----------------------------------------------------------------------------
+/**
+ * The static class that handles resource loading.
+ *
+ * @class ResourceHandler
+ */
+function ResourceHandler() {
+    throw new Error('This is a static class');
+}
+
+ResourceHandler._reloaders = [];
+ResourceHandler._defaultRetryInterval = [500, 1000, 3000];
+
+ResourceHandler.createLoader = function(url, retryMethod, resignMethod, retryInterval) {
+    retryInterval = retryInterval || this._defaultRetryInterval;
+    var reloaders = this._reloaders;
+    var retryCount = 0;
+    return function() {
+        if (retryCount < retryInterval.length) {
+            setTimeout(retryMethod, retryInterval[retryCount]);
+            retryCount++;
+        } else {
+            if (resignMethod) {
+                resignMethod();
+            }
+            if (url) {
+                if (reloaders.length === 0) {
+                    Graphics.printLoadingError(url);
+                    SceneManager.stop();
+                }
+                reloaders.push(function() {
+                    retryCount = 0;
+                    retryMethod();
+                });
+            }
+        }
+    };
+};
+
+ResourceHandler.exists = function() {
+    return this._reloaders.length > 0;
+};
+
+ResourceHandler.retry = function() {
+    if (this._reloaders.length > 0) {
+        Graphics.eraseLoadingError();
+        SceneManager.resume();
+        this._reloaders.forEach(function(reloader) {
+            reloader();
+        });
+        this._reloaders.length = 0;
+    }
 };

@@ -308,6 +308,7 @@ BGMの変更や表示列、行の変更等が行えます。
 |回想モードOnlyパッチ|タイトル画面から、回想モードに直接飛ぶようにする|[回想モードOnlyパッチ](https://raw.githubusercontent.com/rinne-grid/tkoolmv_plugin_RecollectionMode/master/RecollectionMode/js/plugins/RecollectionMode_through_command_patch.js)|
 |CGモードOnlyパッチ|タイトル画面から、CGﾓｰﾄﾞに直接飛ぶようにする|[CGモードOnlyパッチ](https://raw.githubusercontent.com/rinne-grid/tkoolmv_plugin_RecollectionMode/master/RecollectionMode/js/plugins/RecollectionMode_through_command_cg_only_patch.js)|
 |スイッチセーブパッチ|セーブデータに、その時点のスイッチ情報を保存することができます。|[スイッチセーブパッチ](https://raw.githubusercontent.com/rinne-grid/tkoolmv_plugin_RecollectionMode/master/RecollectionMode/js/plugins/RecollectionMode_save_switch_patch.js)|
+|回想モードをメニューから開くパッチ|回想モードをマップメニューから開けるようにするためのパッチです。なおメニューから回想モードを開き、回想を観てメニューに戻る際、メニューの背景に表示されているマップイメージを復帰することはできません。|[回想モードをメニューから開くパッチ](https://raw.githubusercontent.com/rinne-grid/tkoolmv_plugin_RecollectionMode/master/RecollectionMode/js/plugins/RecollectionMode_back_to_menu_and_title_patch.js)|
 
 ### 補助ツール
 
