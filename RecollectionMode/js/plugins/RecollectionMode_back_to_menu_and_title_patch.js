@@ -55,17 +55,18 @@
         if(SceneManager._stack[sceneStackLen-1].name === "Scene_Menu") {
             Scene_Recollection.returnScene = "menu";
             // 呼び出し前の状態を保存する
+
             Scene_Recollection.returnGameObjects = {
-                system      : $gameSystem,
-                screen      : $gameScreen,
-                timer       : $gameTimer,
-                switches    : $gameSwitches,
-                variables   : $gameVariables,
-                selfSwitches: $gameSelfSwitches,
-                actors      : $gameActors,
-                party       : $gameParty,
-                map         : $gameMap,
-                player      : $gamePlayer
+                system      : JsonEx.stringify($gameSystem),
+                screen      : JsonEx.stringify($gameScreen),
+                timer       : JsonEx.stringify($gameTimer),
+                switches    : JsonEx.stringify($gameSwitches),
+                variables   : JsonEx.stringify($gameVariables),
+                selfSwitches: JsonEx.stringify($gameSelfSwitches),
+                actors      : JsonEx.stringify($gameActors),
+                party       : JsonEx.stringify($gameParty),
+                map         : JsonEx.stringify($gameMap),
+                player      : JsonEx.stringify($gamePlayer)
             };
         // 1つ前のsceneがScene_Titleの場合、戻り先は通常どおりタイトルとする
         } else if(SceneManager._stack[sceneStackLen-1].name === "Scene_Title") {
@@ -80,16 +81,16 @@
         Scene_Recollection.rec_list_index = 0;
         // メニューに戻る場合、保存したゲームオブジェクトを復帰する
         if(Scene_Recollection.returnScene === "menu") {
-            $gameSystem         = Scene_Recollection.returnGameObjects.system;
-            $gameScreen         = Scene_Recollection.returnGameObjects.screen;
-            $gameTimer          = Scene_Recollection.returnGameObjects.timer;
-            $gameSwitches       = Scene_Recollection.returnGameObjects.switches;
-            $gameVariables      = Scene_Recollection.returnGameObjects.variables;
-            $gameSelfSwitches   = Scene_Recollection.returnGameObjects.selfSwitches;
-            $gameActors         = Scene_Recollection.returnGameObjects.actors;
-            $gameParty          = Scene_Recollection.returnGameObjects.party;
-            $gameMap            = Scene_Recollection.returnGameObjects.map;
-            $gamePlayer         = Scene_Recollection.returnGameObjects.player;
+            $gameSystem         = JsonEx.parse(Scene_Recollection.returnGameObjects.system);
+            $gameScreen         = JsonEx.parse(Scene_Recollection.returnGameObjects.screen);
+            $gameTimer          = JsonEx.parse(Scene_Recollection.returnGameObjects.timer);
+            $gameSwitches       = JsonEx.parse(Scene_Recollection.returnGameObjects.switches);
+            $gameVariables      = JsonEx.parse(Scene_Recollection.returnGameObjects.variables);
+            $gameSelfSwitches   = JsonEx.parse(Scene_Recollection.returnGameObjects.selfSwitches);
+            $gameActors         = JsonEx.parse(Scene_Recollection.returnGameObjects.actors);
+            $gameParty          = JsonEx.parse(Scene_Recollection.returnGameObjects.party);
+            $gameMap            = JsonEx.parse(Scene_Recollection.returnGameObjects.map);
+            $gamePlayer         = JsonEx.parse(Scene_Recollection.returnGameObjects.player);
             $gameSystem.replayBgm();
             var exists = false;
             var sLen = SceneManager._stack.length;
@@ -107,6 +108,62 @@
         }
     };
 
+
+    //-------------------------------------------------------------------------
+    // ● 回想orCGモードにおいて、実際の回想orCGを選択した場合のコマンド
+    //-------------------------------------------------------------------------
+    Scene_Recollection.prototype.commandDoRecMode = function() {
+        var target_index = this._rec_list.index() + 1;
+        Scene_Recollection.rec_list_index = target_index - 1;
+
+        if (this._rec_list.is_valid_picture(this._rec_list.index() + 1)) {
+            // 回想モードの場合
+            if (this._mode === "recollection") {
+                Scene_Recollection._rngd_recollection_doing = true;
+
+                $gamePlayer.setTransparent(255);
+                this.fadeOutAll();
+
+                $gameTemp.reserveCommonEvent(rngd_recollection_mode_settings.rec_cg_set[target_index]["common_event_id"]);
+                $gamePlayer.reserveTransfer(rngd_recollection_mode_settings.sandbox_map_id, 0, 0, 0);
+                Graphics.frameCount = 0;
+                SceneManager.push(Scene_Map);
+
+                // CGモードの場合
+            } else if (this._mode === "cg") {
+                this._cg_sprites = [];
+                this._cg_sprites_index = 0;
+
+                // シーン画像をロードする
+                rngd_recollection_mode_settings.rec_cg_set[target_index].pictures.forEach(function (name) {
+                    // CGクリックを可能とする
+                    var sp = new Sprite_Button();
+                    sp.setClickHandler(this.commandDummyOk.bind(this));
+                    sp.processTouch = function() {
+                        Sprite_Button.prototype.processTouch.call(this);
+
+                    };
+                    sp.bitmap = ImageManager.loadPicture(name);
+                    // 最初のSprite以外は見えないようにする
+                    if (this._cg_sprites.length > 0) {
+                        sp.visible = false;
+                    }
+
+                    this._cg_sprites.push(sp);
+                    this.addChild(sp);
+
+                }, this);
+
+                this.do_exchange_status_window(this._rec_list, this._dummy_window);
+                this._dummy_window.visible = false;
+            }
+        } else {
+            this._rec_list.activate();
+        }
+    };
+
+
+
     //-------------------------------------------------------------------------
     // ● 回想モードの選択肢を作成
     //-------------------------------------------------------------------------
@@ -120,6 +177,37 @@
             backTitle = rngd_recollection_mode_settings.rec_mode_window.str_select_back_menu;
         }
         this.addCommand(backTitle, "select_back_title");
+    };
+
+    //-------------------------------------------------------------------------
+    // ● 全てのセーブデータを走査し、対象のシーンスイッチ情報を取得する
+    //-------------------------------------------------------------------------
+    Window_RecList.prototype.get_global_variables = function() {
+        this._global_variables = {
+            "switches": {}
+        };
+        var maxSaveFiles = DataManager.maxSavefiles();
+        for(var i = 1; i <= maxSaveFiles; i++) {
+            if(DataManager.loadGameSwitch(i)) {
+                var rngdGlobalSwitchObj = JsonEx.parse(DataManager.rngdGlobalSwitch);
+                var rec_cg_max = rngd_hash_size(rngd_recollection_mode_settings.rec_cg_set);
+
+                for(var j = 0; j < rec_cg_max; j++) {
+                    var cg = rngd_recollection_mode_settings.rec_cg_set[j+1];
+                    if(rngdGlobalSwitchObj._data[cg.switch_id]) {
+                        this._global_variables["switches"][cg.switch_id] = true;
+                    }
+                }
+            }
+        }
+    };
+
+    DataManager.createGameObjectSwitch = function() {
+    };
+
+    DataManager.extractSaveContentsSwitches = function(contents) {
+        DataManager.rngdGlobalSwitch = JsonEx.stringify(contents.switches);
+
     };
 
 (function() {
@@ -136,14 +224,6 @@
     var _Window_MenuCommand_makeCommandList = Window_MenuCommand.prototype.makeCommandList;
     Window_MenuCommand.prototype.makeCommandList = function() {
         _Window_MenuCommand_makeCommandList.call(this);
-        // this.addMainCommands();
-        // this.addFormationCommand();
-        //
-        // this.addOriginalCommands();
-        // this.addOptionsCommand();
-        //
-        // this.addSaveCommand();
-        // this.addGameEndCommand();
         this.addRngdRecollectionCommand();
 
         var recoComandObj = this._list.pop();
@@ -166,7 +246,6 @@
         _Scene_Menu_createCommandWindow.call(this);
 
         this._commandWindow.setHandler('rngd_reco', this.commandRngdRecollectionMode.bind(this));
-        // this.addWindow(this._commandWindow);
     };
 
     //-------------------------------------------------------------------------
@@ -176,5 +255,30 @@
         $gameSystem.saveBgm();
         SceneManager.push(Scene_Recollection);
     };
+
+    // セーブデータ共有オプションが指定されている場合のコンテンツ退避及び復帰のFIX
+    if(rngd_recollection_mode_settings["share_recollection_switches"]) {
+        var _DataManager_makeSaveContents = DataManager.makeSaveContents;
+        DataManager.makeSaveContents = function() {
+            Scene_Recollection.setRecollectionSwitches();
+            var contents = _DataManager_makeSaveContents.call(this);
+            return contents;
+        };
+        var _DataManager_extractSaveContents = DataManager.extractSaveContents;
+        DataManager.extractSaveContents = function(contents) {
+            _DataManager_extractSaveContents.call(this, contents);
+            Scene_Recollection.setRecollectionSwitches();
+        };
+
+        DataManager.setupNewGame = function() {
+            this.createGameObjects();
+            Scene_Recollection.setRecollectionSwitches();
+            this.selectSavefileForNewGame();
+            $gameParty.setupStartingMembers();
+            $gamePlayer.reserveTransfer($dataSystem.startMapId,
+                $dataSystem.startX, $dataSystem.startY);
+            Graphics.frameCount = 0;
+        };
+    }
 
 })();
