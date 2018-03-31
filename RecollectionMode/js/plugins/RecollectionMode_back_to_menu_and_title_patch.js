@@ -41,6 +41,11 @@
  * @desc 回想モードからメニューに戻るためのコマンド名称として表示される文字です。
  * @default メニューに戻る
  *
+ * @param 回想コマンドを表示する条件スイッチID
+ * @desc このスイッチがONの場合に回想コマンドをメニューに追加します。0の時は常に表示されます。
+ * @type switch
+ * @default 0
+ *
  * @help このプラグインには、プラグインコマンドはありません。
  *
  */
@@ -162,7 +167,18 @@
         }
     };
 
-
+    //-------------------------------------------------------------------------
+    // ● 回想コマンドの表示判断
+    //-------------------------------------------------------------------------
+    Scene_Recollection.isDisplayRecoMenu = function() {
+        // displayRecoSwitchが0 または displayRecoSwitchが0でなく、対象のスイッチIDがtrue(ON)の場合はtrueを返す
+        return (Scene_Recollection.displayRecoSwitch === "0" ||
+            (
+            Scene_Recollection.displayRecoSwitch !== "0" &&
+            $gameSwitches.value(Scene_Recollection.displayRecoSwitch)
+            )
+        );
+    };
 
     //-------------------------------------------------------------------------
     // ● 回想モードの選択肢を作成
@@ -217,6 +233,7 @@
     var pluginParams = PluginManager.parameters("RecollectionMode_back_to_menu_and_title_patch");
     Scene_Recollection.displayPosRecoMenu = pluginParams["コマンド追加位置"];
     Scene_Recollection.displayRecoMenu    = pluginParams["「回想」コマンドの名称"];
+    Scene_Recollection.displayRecoSwitch  = pluginParams["回想コマンドを表示する条件スイッチID"];
     rngd_recollection_mode_settings["rec_mode_window"]["str_select_back_menu"] = pluginParams["「戻る」コマンドの名称"];
     //-------------------------------------------------------------------------
     // ● メニューコマンドのFIX。回想モード用のコマンドを追加
@@ -235,7 +252,9 @@
     // ● 回想モード用のコマンドを追加
     //-------------------------------------------------------------------------
     Window_MenuCommand.prototype.addRngdRecollectionCommand = function() {
-        this.addCommand(Scene_Recollection.displayRecoMenu, "rngd_reco");
+        if(Scene_Recollection.isDisplayRecoMenu()) {
+            this.addCommand(Scene_Recollection.displayRecoMenu, "rngd_reco");
+        }
     };
 
     //-------------------------------------------------------------------------
@@ -244,8 +263,9 @@
     var _Scene_Menu_createCommandWindow = Scene_Menu.prototype.createCommandWindow;
     Scene_Menu.prototype.createCommandWindow = function() {
         _Scene_Menu_createCommandWindow.call(this);
-
-        this._commandWindow.setHandler('rngd_reco', this.commandRngdRecollectionMode.bind(this));
+        if(Scene_Recollection.isDisplayRecoMenu()) {
+            this._commandWindow.setHandler('rngd_reco', this.commandRngdRecollectionMode.bind(this));
+        }
     };
 
     //-------------------------------------------------------------------------
