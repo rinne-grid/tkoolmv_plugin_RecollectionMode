@@ -1,4 +1,4 @@
-//=============================================================================
+//===============================================================================================================
 // RecollectionMode_back_to_menu_and_title_patch.js
 // Copyright (c) 2018 rinne_grid
 // This plugin is released under the MIT license.
@@ -7,7 +7,9 @@
 // Version
 // 1.0.0 2018/03/31 公開
 // 1.0.1 2018/04/01 他プラグインとの競合部分について修正
-//=============================================================================
+// 1.0.2 2018/04/01 メニュー経由での回想閲覧時に背景が消えてしまう問題を修正
+//                  回想閲覧直後にセーブして終了すると、回想用マップ(sandbox)からロードしてしまう問題を修正
+//===============================================================================================================
 
 /*:ja
  * @plugindesc メニューから回想モードを呼び出せるようにします
@@ -115,8 +117,32 @@
             $gameSystem.replayBgm();
             // 方向の復帰
             $gamePlayer.direction = _player.direction;
-            // 回想前のマップに遷移
-            $gamePlayer.reserveTransfer(_map.mapId(), _player.x, _player.y);
+
+            // v1.0.2 回想前のマップ情報を復帰する
+            $gameMap._mapId             = _map._mapId;
+            $gameMap._tilesetId         = _map._tilesetId;
+            $gameMap._events            = _map._events;
+            $gameMap._commonEvents      = _map._commonEvents;
+            $gameMap._vehicles          = _map._vehicles;
+            $gameMap._displayX          = _map._displayX;
+            $gameMap._displayY          = _map._displayY;
+            $gameMap._nameDisplay       = _map._nameDisplay;
+            $gameMap._scrollDirection   = _map._scrollDirection;
+            $gameMap._scrollRest        = _map._scrollRest;
+            $gameMap._scrollSpeed       = _map._scrollSpeed;
+            $gameMap._parallaxName      = _map._parallaxName;
+            $gameMap._parallaxZero      = _map._parallaxZero;
+            $gameMap._parallaxLoopX     = _map._parallaxLoopX;
+            $gameMap._parallaxLoopY     = _map._parallaxLoopY;
+            $gameMap._parallaxSx        = _map._parallaxSx;
+            $gameMap._parallaxSy        = _map._parallaxSy;
+            $gameMap._parallaxX         = _map._parallaxX;
+            $gameMap._parallaxY         = _map._parallaxY;
+            $gameMap._battleback1Name   = _map._battleback1Name;
+            $gameMap._battleback2Name   = _map._battleback2Name;
+
+            //$gameMap.setup(_map.mapId);
+            //$gamePlayer.reserveTransfer(_map.mapId(), _player.x, _player.y);
             var exists = false;
             var sLen = SceneManager._stack.length;
             if(sLen > 0 && SceneManager._stack[sLen-1].name === "Scene_Menu") {
@@ -125,6 +151,7 @@
             if(Scene_Recollection.hasOwnProperty("returnGameObjects")) {
                 Scene_Recollection.returnGameObjects = {};
             }
+            SceneManager._backgroundBitmap = Scene_Recollection.menuBackgroundBitmap;
             if(exists) {
                 SceneManager.pop();
             } else {
@@ -277,6 +304,15 @@
         if(Scene_Recollection.isDisplayRecoMenu()) {
             this.addCommand(Scene_Recollection.displayRecoMenu, "rngd_reco");
         }
+    };
+
+    //-------------------------------------------------------------------------
+    // ● v1.0.2 メニュー背景のビットマップを保存する
+    //-------------------------------------------------------------------------
+    var _Scene_MenuBase_createBackground = Scene_MenuBase.prototype.createBackground;
+    Scene_MenuBase.prototype.createBackground = function() {
+        _Scene_MenuBase_createBackground.call(this);
+        Scene_Recollection.menuBackgroundBitmap = this._backgroundSprite.bitmap;
     };
 
     //-------------------------------------------------------------------------
