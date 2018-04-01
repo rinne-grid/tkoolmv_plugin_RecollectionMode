@@ -6,6 +6,7 @@
 //
 // Version
 // 1.0.0 2018/03/31 公開
+// 1.0.1 2018/04/01 他プラグインとの競合部分について修正
 //=============================================================================
 
 /*:ja
@@ -49,7 +50,7 @@
  * @help このプラグインには、プラグインコマンドはありません。
  *
  */
-
+"use strict";
     Scene_Recollection.prototype.create = function() {
         Scene_Base.prototype.create.call(this);
         this.createWindowLayer();
@@ -62,16 +63,16 @@
             // 呼び出し前の状態を保存する
 
             Scene_Recollection.returnGameObjects = {
-                system      : JsonEx.stringify($gameSystem),
-                screen      : JsonEx.stringify($gameScreen),
-                timer       : JsonEx.stringify($gameTimer),
-                switches    : JsonEx.stringify($gameSwitches),
-                variables   : JsonEx.stringify($gameVariables),
-                selfSwitches: JsonEx.stringify($gameSelfSwitches),
-                actors      : JsonEx.stringify($gameActors),
-                party       : JsonEx.stringify($gameParty),
-                map         : JsonEx.stringify($gameMap),
-                player      : JsonEx.stringify($gamePlayer)
+                system      : JsonEx.makeDeepCopy($gameSystem),
+                screen      : JsonEx.makeDeepCopy($gameScreen),
+                timer       : JsonEx.makeDeepCopy($gameTimer),
+                switches    : JsonEx.makeDeepCopy($gameSwitches),
+                variables   : JsonEx.makeDeepCopy($gameVariables),
+                selfSwitches: JsonEx.makeDeepCopy($gameSelfSwitches),
+                actors      : JsonEx.makeDeepCopy($gameActors),
+                party       : JsonEx.makeDeepCopy($gameParty),
+                map         : JsonEx.makeDeepCopy($gameMap),
+                player      : JsonEx.makeDeepCopy($gamePlayer)
             };
         // 1つ前のsceneがScene_Titleの場合、戻り先は通常どおりタイトルとする
         } else if(SceneManager._stack[sceneStackLen-1].name === "Scene_Title") {
@@ -86,17 +87,36 @@
         Scene_Recollection.rec_list_index = 0;
         // メニューに戻る場合、保存したゲームオブジェクトを復帰する
         if(Scene_Recollection.returnScene === "menu") {
-            $gameSystem         = JsonEx.parse(Scene_Recollection.returnGameObjects.system);
-            $gameScreen         = JsonEx.parse(Scene_Recollection.returnGameObjects.screen);
-            $gameTimer          = JsonEx.parse(Scene_Recollection.returnGameObjects.timer);
-            $gameSwitches       = JsonEx.parse(Scene_Recollection.returnGameObjects.switches);
-            $gameVariables      = JsonEx.parse(Scene_Recollection.returnGameObjects.variables);
-            $gameSelfSwitches   = JsonEx.parse(Scene_Recollection.returnGameObjects.selfSwitches);
-            $gameActors         = JsonEx.parse(Scene_Recollection.returnGameObjects.actors);
-            $gameParty          = JsonEx.parse(Scene_Recollection.returnGameObjects.party);
-            $gameMap            = JsonEx.parse(Scene_Recollection.returnGameObjects.map);
-            $gamePlayer         = JsonEx.parse(Scene_Recollection.returnGameObjects.player);
+
+            var _system         = Scene_Recollection.returnGameObjects.system;
+            var _screen         = Scene_Recollection.returnGameObjects.screen;
+            var _timer          = Scene_Recollection.returnGameObjects.timer;
+            var _switches       = Scene_Recollection.returnGameObjects.switches;
+            var _variables      = Scene_Recollection.returnGameObjects.variables;
+            var _selfSwitches   = Scene_Recollection.returnGameObjects.selfSwitches;
+            var _actors         = Scene_Recollection.returnGameObjects.actors;
+            var _party          = Scene_Recollection.returnGameObjects.party;
+            var _map            = Scene_Recollection.returnGameObjects.map;
+            var _player         = Scene_Recollection.returnGameObjects.player;
+
+            $gameSystem         = _system;
+            $gameScreen         = _screen;
+            $gameTimer          = _timer;
+            $gameSwitches       = _switches;
+            $gameVariables      = _variables;
+            $gameSelfSwitches   = _selfSwitches;
+            $gameActors         = _actors;
+            $gameParty          = _party;
+
+            // v1.0.1 $gameMapに関しては、回想前に保存したマップへの遷移で実現する
+            // $gameMap            = _map;
+
+            $gamePlayer         = _player;
             $gameSystem.replayBgm();
+            // 方向の復帰
+            $gamePlayer.direction = _player.direction;
+            // 回想前のマップに遷移
+            $gamePlayer.reserveTransfer(_map.mapId(), _player.x, _player.y);
             var exists = false;
             var sLen = SceneManager._stack.length;
             if(sLen > 0 && SceneManager._stack[sLen-1].name === "Scene_Menu") {
