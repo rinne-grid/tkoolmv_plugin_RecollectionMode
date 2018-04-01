@@ -122,7 +122,9 @@
             if(sLen > 0 && SceneManager._stack[sLen-1].name === "Scene_Menu") {
                 exists = true;
             }
-
+            if(Scene_Recollection.hasOwnProperty("returnGameObjects")) {
+                Scene_Recollection.returnGameObjects = {};
+            }
             if(exists) {
                 SceneManager.pop();
             } else {
