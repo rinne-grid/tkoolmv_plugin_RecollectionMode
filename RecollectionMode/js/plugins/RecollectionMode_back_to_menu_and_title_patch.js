@@ -9,6 +9,9 @@
 // 1.0.1 2018/04/01 他プラグインとの競合部分について修正
 // 1.0.2 2018/04/01 メニュー経由での回想閲覧時に背景が消えてしまう問題を修正
 //                  回想閲覧直後にセーブして終了すると、回想用マップ(sandbox)からロードしてしまう問題を修正
+// 1.0.3 2018/04/02 メニュー経由での回想閲覧時にBGSが復帰されない問題を修正
+//                  メニュー経由での回想閲覧時に天気等の画面効果が復帰されない、または意図せず表示される問題を修正
+//                  回想メニューでキャンセルボタン押下時に前画面に戻るように改善
 //===============================================================================================================
 
 /*:ja
@@ -80,6 +83,8 @@
         } else if(SceneManager._stack[sceneStackLen-1].name === "Scene_Title") {
             Scene_Recollection.returnScene = "title";
         }
+        // 画面効果をクリア
+        $gameScreen.clear();
     };
 
     //-------------------------------------------------------------------------
@@ -115,6 +120,7 @@
 
             $gamePlayer         = _player;
             $gameSystem.replayBgm();
+            AudioManager.replayBgs(Scene_Recollection.saveBgsObject);
             // 方向の復帰
             $gamePlayer.direction = _player.direction;
 
@@ -217,6 +223,78 @@
     };
 
     //-------------------------------------------------------------------------
+    // ● v1.0.3 回想メニュー作成処理
+    //-------------------------------------------------------------------------
+    Scene_Recollection.prototype.createCommandWindow = function() {
+
+        if(Scene_Recollection.reload_rec_list) {
+            // 回想モード選択ウィンドウ
+            this._rec_window = new Window_RecollectionCommand();
+            this._rec_window.setHandler('select_recollection', this.commandShowRecollection.bind(this));
+            this._rec_window.setHandler('select_cg', this.commandShowCg.bind(this));
+            this._rec_window.setHandler('select_back_title', this.commandBackTitle.bind(this));
+            this._rec_window.setHandler('cancel', this.commandBackTitle.bind(this));
+
+            // リロードの場合：選択ウィンドウを非表示にする
+            this._rec_window.visible = false;
+            this._rec_window.deactivate();
+            this.addWindow(this._rec_window);
+
+            // 回想リスト
+            this._rec_list = new Window_RecList(0, 0, Graphics.width, Graphics.height);
+
+            // リロードの場合：回想リストを表示にする
+            this._rec_list.visible = true;
+            this._rec_list.setHandler('ok', this.commandDoRecMode.bind(this));
+            this._rec_list.setHandler('cancel', this.commandBackSelectMode.bind(this));
+            this._mode = "recollection";
+            this._rec_list.activate();
+            this._rec_list.select(Scene_Recollection.rec_list_index);
+
+            this.addWindow(this._rec_list);
+
+            // CG参照用ダミーコマンド
+            this._dummy_window = new Window_Command(0, 0);
+            this._dummy_window.deactivate();
+            this._dummy_window.visible = false;
+            this._dummy_window.setHandler('ok', this.commandDummyOk.bind(this));
+            this._dummy_window.setHandler('cancel', this.commandDummyCancel.bind(this));
+            this._dummy_window.addCommand('next', 'ok');
+            this.addWindow(this._dummy_window);
+
+            Scene_Recollection.reload_rec_list = false;
+
+        } else {
+            // 回想モード選択ウィンドウ
+            this._rec_window = new Window_RecollectionCommand();
+            this._rec_window.setHandler('select_recollection', this.commandShowRecollection.bind(this));
+            this._rec_window.setHandler('select_cg', this.commandShowCg.bind(this));
+            this._rec_window.setHandler('select_back_title', this.commandBackTitle.bind(this));
+            this._rec_window.setHandler('cancel', this.commandBackTitle.bind(this));
+            this.addWindow(this._rec_window);
+
+            // 回想リスト
+            this._rec_list = new Window_RecList(0, 0, Graphics.width, Graphics.height);
+            this._rec_list.visible = false;
+            this._rec_list.setHandler('ok', this.commandDoRecMode.bind(this));
+            this._rec_list.setHandler('cancel', this.commandBackSelectMode.bind(this));
+            this._rec_list.select(Scene_Recollection.rec_list_index);
+            this.addWindow(this._rec_list);
+
+            // CG参照用ダミーコマンド
+            this._dummy_window = new Window_Command(0, 0);
+            this._dummy_window.deactivate();
+            this._dummy_window.playOkSound = function(){}; // CGﾓｰﾄﾞの場合、OK音を鳴らさない
+            this._dummy_window.visible = false;
+            this._dummy_window.setHandler('ok', this.commandDummyOk.bind(this));
+            this._dummy_window.setHandler('cancel', this.commandDummyCancel.bind(this));
+            this._dummy_window.addCommand('next', 'ok');
+            this.addWindow(this._dummy_window);
+        }
+
+    };
+
+    //-------------------------------------------------------------------------
     // ● 回想コマンドの表示判断
     //-------------------------------------------------------------------------
     Scene_Recollection.isDisplayRecoMenu = function() {
@@ -227,6 +305,16 @@
             $gameSwitches.value(Scene_Recollection.displayRecoSwitch)
             )
         );
+    };
+
+    //-------------------------------------------------------------------------
+    // ● v1.0.3 回想開始用ヘルパー関数
+    //-------------------------------------------------------------------------
+    Scene_Recollection.startRecollection = function() {
+        $gameSystem.saveBgm();
+        Scene_Recollection.saveBgsObject = AudioManager.saveBgs();
+        AudioManager.stopBgs();
+        SceneManager.push(Scene_Recollection);
     };
 
     //-------------------------------------------------------------------------
@@ -330,8 +418,8 @@
     // ● メニューから回想モードに移動
     //-------------------------------------------------------------------------
     Scene_Menu.prototype.commandRngdRecollectionMode = function() {
-        $gameSystem.saveBgm();
-        SceneManager.push(Scene_Recollection);
+        // v1.0.3 ヘルパー関数追加
+        Scene_Recollection.startRecollection();
     };
 
     // セーブデータ共有オプションが指定されている場合のコンテンツ退避及び復帰のFIX
