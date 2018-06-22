@@ -118,7 +118,7 @@
             $gameActors         = _actors;
             $gameParty          = _party;
 
-            // v1.0.1 $gameMapに関しては、回想前に保存したマップへの遷移で実現する
+            // $gameMapに関しては、回想前に保存したマップへの遷移で実現する
             // $gameMap            = _map;
 
             $gamePlayer         = _player;
@@ -127,7 +127,7 @@
             // 方向の復帰
             $gamePlayer.direction = _player.direction;
 
-            // v1.0.2 回想前のマップ情報を復帰する
+            // 回想前のマップ情報を復帰する
             $gameMap._mapId             = _map._mapId;
             $gameMap._tilesetId         = _map._tilesetId;
             $gameMap._events            = _map._events;
@@ -228,7 +228,7 @@
     };
 
     //-------------------------------------------------------------------------
-    // ● v1.0.3 回想メニュー作成処理
+    // ● 回想メニュー作成処理
     //-------------------------------------------------------------------------
     Scene_Recollection.prototype.createCommandWindow = function() {
 
@@ -313,7 +313,7 @@
     };
 
     //-------------------------------------------------------------------------
-    // ● v1.0.3 回想開始用ヘルパー関数
+    // ● 回想開始用ヘルパー関数
     //-------------------------------------------------------------------------
     Scene_Recollection.startRecollection = function() {
         $gameSystem.saveBgm();
@@ -401,7 +401,7 @@
     };
 
     //-------------------------------------------------------------------------
-    // ● v1.0.2 メニュー背景のビットマップを保存する
+    // ● メニュー背景のビットマップを保存する
     //-------------------------------------------------------------------------
     var _Scene_MenuBase_createBackground = Scene_MenuBase.prototype.createBackground;
     Scene_MenuBase.prototype.createBackground = function() {
@@ -424,7 +424,7 @@
     // ● メニューから回想モードに移動
     //-------------------------------------------------------------------------
     Scene_Menu.prototype.commandRngdRecollectionMode = function() {
-        // v1.0.3 ヘルパー関数追加
+        // ヘルパー関数追加
         Scene_Recollection.startRecollection();
     };
 
