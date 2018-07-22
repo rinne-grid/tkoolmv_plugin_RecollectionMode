@@ -6,6 +6,9 @@
 //
 // Version
 // 1.0.0 2018/06/23 公開
+// 1.0.1 2018/07/22 Scene_Mapからの直接呼び出しに対応
+//       * 戻り先シーンを特定するため、復帰用オブジェクトの保存タイミングを変更
+//       * 回想モードの開始時・終了時に特定のスイッチをOFF/ONするためのパラメータ・処理を追加
 //===============================================================================================================
 
 /*:ja
@@ -51,6 +54,17 @@
  * @type string
  * @default Scene_Menu
  *
+ * @param 開始時にOFFにするスイッチID
+ * @desc 回想モードを呼び出す時にOFFにするスイッチIDを指定します
+ * @type switch
+ * @default 15
+ *
+ * @param 終了時にONにするスイッチID
+ * @desc 回想モード終了時にONにするスイッチIDを指定します
+ * @type switch
+ * @default 15
+ *
+ *
  * @help このプラグインには、プラグインコマンドはありません。
  *
  */
@@ -64,30 +78,23 @@
         // 1つ前のsceneがselfMenuClassNameの場合、戻り先をselfMenuClassNameとする
         if(SceneManager._stack[sceneStackLen-1].name === Scene_Recollection.selfMenuClassName) {
             Scene_Recollection.returnScene = "menu";
-            // 呼び出し前の状態を保存する
-
-            if(Scene_Recollection["showed_the_reco"] === undefined) {
-                Scene_Recollection.returnGameObjects = {
-                    system      : JsonEx.makeDeepCopy($gameSystem),
-                    screen      : JsonEx.makeDeepCopy($gameScreen),
-                    timer       : JsonEx.makeDeepCopy($gameTimer),
-                    switches    : JsonEx.makeDeepCopy($gameSwitches),
-                    variables   : JsonEx.makeDeepCopy($gameVariables),
-                    selfSwitches: JsonEx.makeDeepCopy($gameSelfSwitches),
-                    actors      : JsonEx.makeDeepCopy($gameActors),
-                    party       : JsonEx.makeDeepCopy($gameParty),
-                    map         : JsonEx.makeDeepCopy($gameMap),
-                    player      : JsonEx.makeDeepCopy($gamePlayer)
-                };
-            }
-
 
         // 1つ前のsceneがScene_Titleの場合、戻り先は通常どおりタイトルとする
         } else if(SceneManager._stack[sceneStackLen-1].name === "Scene_Title") {
             Scene_Recollection.returnScene = "title";
         }
+        // 回想開始時に対象のスイッチをOFFにする
+        this.doToggleSwitchIdForStartEnd(Scene_Recollection.switchIdStartOff, false);
         // 画面効果をクリア
         $gameScreen.clear();
+    };
+    //-------------------------------------------------------------------------
+    // ● スイッチ操作
+    //-------------------------------------------------------------------------
+    Scene_Recollection.prototype.doToggleSwitchIdForStartEnd = function(switchId, value) {
+        if(switchId > 0 || switchId !== undefined) {
+            $gameSwitches.setValue(switchId, value);
+        }
     };
 
     //-------------------------------------------------------------------------
@@ -97,77 +104,95 @@
         Scene_Recollection.rec_list_index = 0;
         // メニューに戻る場合、保存したゲームオブジェクトを復帰する
         if(Scene_Recollection.returnScene === "menu") {
-
-            var _system         = Scene_Recollection.returnGameObjects.system;
-            var _screen         = Scene_Recollection.returnGameObjects.screen;
-            var _timer          = Scene_Recollection.returnGameObjects.timer;
-            var _switches       = Scene_Recollection.returnGameObjects.switches;
-            var _variables      = Scene_Recollection.returnGameObjects.variables;
-            var _selfSwitches   = Scene_Recollection.returnGameObjects.selfSwitches;
-            var _actors         = Scene_Recollection.returnGameObjects.actors;
-            var _party          = Scene_Recollection.returnGameObjects.party;
-            var _map            = Scene_Recollection.returnGameObjects.map;
-            var _player         = Scene_Recollection.returnGameObjects.player;
-
-            $gameSystem         = _system;
-            $gameScreen         = _screen;
-            $gameTimer          = _timer;
-            $gameSwitches       = _switches;
-            $gameVariables      = _variables;
-            $gameSelfSwitches   = _selfSwitches;
-            $gameActors         = _actors;
-            $gameParty          = _party;
-
-            // $gameMapに関しては、回想前に保存したマップへの遷移で実現する
-            // $gameMap            = _map;
-
-            $gamePlayer         = _player;
-            $gameSystem.replayBgm();
-            AudioManager.replayBgs(Scene_Recollection.saveBgsObject);
-            // 方向の復帰
-            $gamePlayer.direction = _player.direction;
-
-            // 回想前のマップ情報を復帰する
-            $gameMap._mapId             = _map._mapId;
-            $gameMap._tilesetId         = _map._tilesetId;
-            $gameMap._events            = _map._events;
-            $gameMap._commonEvents      = _map._commonEvents;
-            $gameMap._vehicles          = _map._vehicles;
-            $gameMap._displayX          = _map._displayX;
-            $gameMap._displayY          = _map._displayY;
-            $gameMap._nameDisplay       = _map._nameDisplay;
-            $gameMap._scrollDirection   = _map._scrollDirection;
-            $gameMap._scrollRest        = _map._scrollRest;
-            $gameMap._scrollSpeed       = _map._scrollSpeed;
-            $gameMap._parallaxName      = _map._parallaxName;
-            $gameMap._parallaxZero      = _map._parallaxZero;
-            $gameMap._parallaxLoopX     = _map._parallaxLoopX;
-            $gameMap._parallaxLoopY     = _map._parallaxLoopY;
-            $gameMap._parallaxSx        = _map._parallaxSx;
-            $gameMap._parallaxSy        = _map._parallaxSy;
-            $gameMap._parallaxX         = _map._parallaxX;
-            $gameMap._parallaxY         = _map._parallaxY;
-            $gameMap._battleback1Name   = _map._battleback1Name;
-            $gameMap._battleback2Name   = _map._battleback2Name;
-
-            //$gameMap.setup(_map.mapId);
-            //$gamePlayer.reserveTransfer(_map.mapId(), _player.x, _player.y);
-            Scene_Recollection["showed_the_reco"] = undefined;
-            var exists = false;
-            var sLen = SceneManager._stack.length;
-            if(sLen > 0 && SceneManager._stack[sLen-1].name === Scene_Recollection.selfMenuClassName) {
-                exists = true;
-            }
-            if(Scene_Recollection.hasOwnProperty("returnGameObjects")) {
-                Scene_Recollection.returnGameObjects = {};
-            }
-            SceneManager._backgroundBitmap = Scene_Recollection.menuBackgroundBitmap;
-            if(exists) {
-                SceneManager.pop();
+            //メニューから遷移したにも関わらず、復帰オブジェクトが存在しない場合はタイトルに遷移する
+            // returnGameObjectsが存在しない
+            if(!Scene_Recollection.hasOwnProperty("returnGameObjects") ||
+                // returnGameObjectsは定義されているが、systemがない
+                ( Scene_Recollection.hasOwnProperty("returnGameObjects") && Scene_Recollection.returnGameObjects === undefined )
+            ) {
+                // 回想終了時に対象のスイッチをONにする
+                this.doToggleSwitchIdForStartEnd(Scene_Recollection.switchIdEndOn, true);
+                SceneManager.goto(Scene_Title);
             } else {
-                SceneManager.goto( eval(Scene_Recollection.selfMenuClassName) );
+                var _system         = Scene_Recollection.returnGameObjects.system;
+                var _screen         = Scene_Recollection.returnGameObjects.screen;
+                var _timer          = Scene_Recollection.returnGameObjects.timer;
+                var _switches       = Scene_Recollection.returnGameObjects.switches;
+                var _variables      = Scene_Recollection.returnGameObjects.variables;
+                var _selfSwitches   = Scene_Recollection.returnGameObjects.selfSwitches;
+                var _actors         = Scene_Recollection.returnGameObjects.actors;
+                var _party          = Scene_Recollection.returnGameObjects.party;
+                var _map            = Scene_Recollection.returnGameObjects.map;
+                var _player         = Scene_Recollection.returnGameObjects.player;
+
+                $gameSystem         = _system;
+                $gameScreen         = _screen;
+                $gameTimer          = _timer;
+                $gameSwitches       = _switches;
+                $gameVariables      = _variables;
+                $gameSelfSwitches   = _selfSwitches;
+                $gameActors         = _actors;
+                $gameParty          = _party;
+
+                // $gameMapに関しては、回想前に保存したマップへの遷移で実現する
+                // $gameMap            = _map;
+
+                $gamePlayer         = _player;
+                $gameSystem.replayBgm();
+                AudioManager.replayBgs(Scene_Recollection.saveBgsObject);
+                // 方向の復帰
+                $gamePlayer.direction = _player.direction;
+
+                // 回想前のマップ情報を復帰する
+                $gameMap._mapId             = _map._mapId;
+                $gameMap._tilesetId         = _map._tilesetId;
+                $gameMap._events            = _map._events;
+                $gameMap._commonEvents      = _map._commonEvents;
+                $gameMap._vehicles          = _map._vehicles;
+                $gameMap._displayX          = _map._displayX;
+                $gameMap._displayY          = _map._displayY;
+                $gameMap._nameDisplay       = _map._nameDisplay;
+                $gameMap._scrollDirection   = _map._scrollDirection;
+                $gameMap._scrollRest        = _map._scrollRest;
+                $gameMap._scrollSpeed       = _map._scrollSpeed;
+                $gameMap._parallaxName      = _map._parallaxName;
+                $gameMap._parallaxZero      = _map._parallaxZero;
+                $gameMap._parallaxLoopX     = _map._parallaxLoopX;
+                $gameMap._parallaxLoopY     = _map._parallaxLoopY;
+                $gameMap._parallaxSx        = _map._parallaxSx;
+                $gameMap._parallaxSy        = _map._parallaxSy;
+                $gameMap._parallaxX         = _map._parallaxX;
+                $gameMap._parallaxY         = _map._parallaxY;
+                $gameMap._battleback1Name   = _map._battleback1Name;
+                $gameMap._battleback2Name   = _map._battleback2Name;
+
+                //$gameMap.setup(_map.mapId);
+                //$gamePlayer.reserveTransfer(_map.mapId(), _player.x, _player.y);
+                Scene_Recollection["showed_the_reco"] = undefined;
+                var exists = false;
+                var sLen = SceneManager._stack.length;
+                if(sLen > 0 && SceneManager._stack[sLen-1].name === Scene_Recollection.selfMenuClassName) {
+                    exists = true;
+                }
+                if(Scene_Recollection.hasOwnProperty("returnGameObjects")) {
+                    Scene_Recollection.returnGameObjects = undefined;
+                }
+                SceneManager._backgroundBitmap = Scene_Recollection.menuBackgroundBitmap;
+                if(exists) {
+                    // 回想終了時に対象のスイッチをONにする
+                    this.doToggleSwitchIdForStartEnd(Scene_Recollection.switchIdEndOn, true);
+                    SceneManager.pop();
+                } else {
+                    // 回想終了時に対象のスイッチをONにする
+                    this.doToggleSwitchIdForStartEnd(Scene_Recollection.switchIdEndOn, true);
+                    SceneManager.goto( eval(Scene_Recollection.selfMenuClassName) );
+                }
             }
+
+
         } else {
+            // 回想終了時に対象のスイッチをONにする
+            this.doToggleSwitchIdForStartEnd(Scene_Recollection.switchIdEndOn, true);
             SceneManager.goto(Scene_Title);
         }
     };
@@ -319,6 +344,20 @@
         $gameSystem.saveBgm();
         Scene_Recollection.saveBgsObject = AudioManager.saveBgs();
         AudioManager.stopBgs();
+
+                Scene_Recollection.returnGameObjects = {
+                    system      : JsonEx.makeDeepCopy($gameSystem),
+                    screen      : JsonEx.makeDeepCopy($gameScreen),
+                    timer       : JsonEx.makeDeepCopy($gameTimer),
+                    switches    : JsonEx.makeDeepCopy($gameSwitches),
+                    variables   : JsonEx.makeDeepCopy($gameVariables),
+                    selfSwitches: JsonEx.makeDeepCopy($gameSelfSwitches),
+                    actors      : JsonEx.makeDeepCopy($gameActors),
+                    party       : JsonEx.makeDeepCopy($gameParty),
+                    map         : JsonEx.makeDeepCopy($gameMap),
+                    player      : JsonEx.makeDeepCopy($gamePlayer)
+                };
+
         SceneManager.push(Scene_Recollection);
     };
 
@@ -377,6 +416,8 @@
     Scene_Recollection.displayRecoMenu    = pluginParams["「回想」コマンドの名称"];
     Scene_Recollection.displayRecoSwitch  = pluginParams["回想コマンドを表示する条件スイッチID"];
     Scene_Recollection.selfMenuClassName  = pluginParams["自作メニューのシーンクラス名（Scene_XXXX）"];
+    Scene_Recollection.switchIdStartOff   = pluginParams["開始時にOFFにするスイッチID"];
+    Scene_Recollection.switchIdEndOn      = pluginParams["終了時にONにするスイッチID"];
     rngd_recollection_mode_settings["rec_mode_window"]["str_select_back_menu"] = pluginParams["「戻る」コマンドの名称"];
     //-------------------------------------------------------------------------
     // ● メニューコマンドのFIX。回想モード用のコマンドを追加

@@ -7,6 +7,5 @@ var $plugins =
 {"name":"RecollectionMode_save_switch_patch","status":false,"description":"セーブデータに、その時点のスイッチ情報を保存することができます。","parameters":{}},
 {"name":"RecollectionMode_through_command_cg_only_patch","status":false,"description":"RecollectionModeのパッチです。タイトルから直接CG閲覧に遷移します","parameters":{}},
 {"name":"RecollectionMode_back_to_menu_and_title_patch","status":false,"description":"メニューから回想モードを呼び出せるようにします","parameters":{"コマンド追加位置":"8","「回想」コマンドの名称":"回想モード","「戻る」コマンドの名称":"メニューに戻る","回想コマンドを表示する条件スイッチID":"9"}},
-{"name":"MenuCallCommon","status":false,"description":"Xボタンorマウスの右クリックでメニュー画面を開くかわりにコモンイベントを動作させるプラグイン","parameters":{"ComEvent":"8","ComCloseEvent":"1","ComSwitch":"1"}},
-{"name":"RecollectionMode_back_to_self_menu_and_title_patch","status":false,"description":"任意の自作メニューシーンから回想モードを呼び出せるようにします","parameters":{"コマンド追加位置":"5","「回想」コマンドの名称":"回想モード","「戻る」コマンドの名称":"メニューに戻る","回想コマンドを表示する条件スイッチID":"0","自作メニューのシーンクラス名（Scene_XXXX）":"Scene_Menu"}}
+{"name":"RecollectionMode_back_to_self_menu_and_title_patch","status":false,"description":"任意の自作メニューシーンから回想モードを呼び出せるようにします","parameters":{"コマンド追加位置":"5","「回想」コマンドの名称":"回想モード","「戻る」コマンドの名称":"メニューに戻る","回想コマンドを表示する条件スイッチID":"0","自作メニューのシーンクラス名（Scene_XXXX）":"Scene_Map","開始時にOFFにするスイッチID":"15","終了時にONにするスイッチID":"15"}}
 ];
