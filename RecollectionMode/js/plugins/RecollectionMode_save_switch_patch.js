@@ -6,6 +6,8 @@
 //
 // Version
 // 1.0.0 2016/12/24 公開
+// 1.1.0 2019/02/10 回想モードで利用しているスイッチのみを
+//                  セーブ対象とするためのコマンドを追加
 //=============================================================================
 /*:ja
  * @plugindesc セーブデータに、その時点のスイッチ情報を保存することができます。
@@ -17,21 +19,48 @@
  *  プラグインコマンド
  *    RecoModeExt save
  *
- *  イベントでゲームオーバーになった時だけ「敗北CG・シーン」を
- *  回想として追加する必要がある・・・という場合に利用できると思われます。
+ *     イベントでゲームオーバーになった時だけ「敗北CG・シーン」を
+ *     回想として追加する必要がある・・・という場合に利用できると思われます。
  *
- *  例・・・1番目のセーブデータでゲームプレイ
- *  ・勝敗でイベント分岐しておく
- *  ・負けた場合：負けた際のCG出現スイッチをONにする
- *  ・プラグインコマンド(RecoModeExt save)を実行する
- *  ・ゲームオーバーの処理を行う
- *  →1番目のセーブデータを改めてロードすると、CG出現スイッチがONの状態で再開できる
+ *     例・・・1番目のセーブデータでゲームプレイ
+ *     ・勝敗でイベント分岐しておく
+ *     ・負けた場合：負けた際のCG出現スイッチをONにする
+ *     ・プラグインコマンド(RecoModeExt save)を実行する
+ *     ・ゲームオーバーの処理を行う
+ *     →1番目のセーブデータを改めてロードすると、CG出現スイッチがONの状態で再開できる
+ *     （この場合、ゲームオーバー時点のスイッチ情報を元にします。）
+ *
+ *
+ *    RecoModeExt set_save_check_point
+ *     コマンド実行時点のスイッチ状態を保存します
+ *
+ *    RecoModeExt save_only_reco_switch
+ *     set_save_check_pointの実行後に呼び出します。
+ *     set_save_check_pointを実行した時点のスイッチ情報を元に
+ *     RecollectionMode.jsで指定している回想用スイッチのみをセーブします。
+ *     【注意事項】
+ *     ・セーブデータがまだ1つも存在しない場合、セーブ処理をせずスキップします。
+ *
  */
+
+var rngd_$gameTemp      = null;
+rngd_$gameSystem        = null;
+rngd_$gameScreen        = null;
+rngd_$gameTimer         = null;
+rngd_$gameMessage       = null;
+rngd_$gameVariables     = null;
+rngd_$gameSelfSwitches  = null;
+rngd_$gameActors        = null;
+rngd_$gameParty         = null;
+rngd_$gameTroop         = null;
+rngd_$gameMap           = null;
+rngd_$gamePlayer        = null;
 
 (function() {
     var parameters = PluginManager.parameters('RecollectionMode_save_switch_patch');
     var _Game_Interpreter_pluginCommand = Game_Interpreter.prototype.pluginCommand;
 
+    Game_System.prototype.$$rngdGameSwitch = null;
     Game_Interpreter.prototype.pluginCommand = function(command, args) {
         _Game_Interpreter_pluginCommand.call(this, command, args);
 
@@ -40,6 +69,15 @@
                 case 'save':
                     $gameSystem.rngd_recollectionModeExtSave();
                     break;
+                case 'set_save_check_point':
+                    $gameSystem.rngd_recollectionModeSetSaveCheckPoint();
+                    break;
+                case 'save_only_reco_switch':
+                    var recoSwitchOnly = true;
+                    $gameSystem.rngd_recollectionModeExtSave(recoSwitchOnly);
+                    // チェックポイント用スイッチをクリアする
+                    $gameSystem.$$rngdGameSwitch = null;
+                    break;
             }
         }
     };
@@ -47,11 +85,23 @@
     //-------------------------------------------------------------------------
     // ● 最後にアクセスしたセーブデータをロードし、スイッチ以外のオブジェクトを取得
     //-------------------------------------------------------------------------
-    Game_System.prototype.rngd_recollectionModeExtSave = function() {
+    Game_System.prototype.rngd_recollectionModeExtSave = function(recoSwitchOnly) {
         // 1度ロードして、スイッチ以外のオブジェクトを適用
         // スイッチのみを新オブジェクトとして適用したものを保存
-        DataManager.rngd_loadGameExcludeSwitch(DataManager._lastAccessedId);
-        DataManager.rngd_saveGameSwitchOnly(DataManager._lastAccessedId);
+        var result = DataManager.rngd_loadGameExcludeSwitch(DataManager._lastAccessedId);
+        if(result) {
+            DataManager.rngd_saveGameSwitchOnly(DataManager._lastAccessedId, recoSwitchOnly);
+        } else {
+            console.warn("RecollectionMode_save_switch_path.js - セーブデータがありません。セーブをスキップします");
+        }
+    };
+
+    //-------------------------------------------------------------------------
+    // ● コマンド実行時点のスイッチ情報を保存する
+    //-------------------------------------------------------------------------
+    Game_System.prototype.rngd_recollectionModeSetSaveCheckPoint = function() {
+        // スイッチのみを新オブジェクトとして適用したものを保存
+        $gameSystem.$$rngdGameSwitch = JsonEx.makeDeepCopy($gameSwitches);
     };
 
     //-------------------------------------------------------------------------
@@ -120,9 +170,9 @@
     //-------------------------------------------------------------------------
     // ● saveGame拡張
     //-------------------------------------------------------------------------
-    DataManager.rngd_saveGameSwitchOnly = function(savefileId) {
+    DataManager.rngd_saveGameSwitchOnly = function(savefileId, recoSwitchOnly) {
         try {
-            return this.rngd_saveGameWithoutRescueByLoadDataAndCurrentOne(savefileId);
+            return this.rngd_saveGameWithoutRescueByLoadDataAndCurrentOne(savefileId, recoSwitchOnly);
         } catch (e) {
             console.error(e);
             try {
@@ -136,8 +186,8 @@
     //-------------------------------------------------------------------------
     // ● saveGameWithoutRescue拡張
     //-------------------------------------------------------------------------
-    DataManager.rngd_saveGameWithoutRescueByLoadDataAndCurrentOne = function(savefileId) {
-        var json = JsonEx.stringify(this.rngd_makeSaveContentsFromTemp());
+    DataManager.rngd_saveGameWithoutRescueByLoadDataAndCurrentOne = function(savefileId, recoSwitchOnly) {
+        var json = JsonEx.stringify(this.rngd_makeSaveContentsFromTemp(recoSwitchOnly));
         if (json.length >= 200000) {
             console.warn('Save data too big!');
         }
@@ -152,13 +202,33 @@
     //-------------------------------------------------------------------------
     // ● makeSaveContents拡張
     //-------------------------------------------------------------------------
-    DataManager.rngd_makeSaveContentsFromTemp = function() {
+    DataManager.rngd_makeSaveContentsFromTemp = function(recoSwitchOnly) {
         // A save data does not contain $gameTemp, $gameMessage, and $gameTroop.
         var contents = {};
         contents.system       = rngd_$gameSystem;
         contents.screen       = rngd_$gameScreen;
         contents.timer        = rngd_$gameTimer;
-        contents.switches     = $gameSwitches;
+        if(recoSwitchOnly !== undefined && recoSwitchOnly !== null && recoSwitchOnly === true) {
+            if($gameSystem.$$rngdGameSwitch === null || $gameSystem.$$rngdGameSwitch === undefined) {
+                Graphics.printError('RecollectionMode_save_switch_patchコマンドエラー', 'RecoModeExt set_save_check_pointコマンドが呼ばれていません。');
+                throw new Error("RecoModeExt set_save_check_pointコマンドが呼ばれていません。");
+            }
+
+            var recMaxSize = rngd_hash_size(rngd_recollection_mode_settings.rec_cg_set);
+            var targetSwitchObjList = [];
+            for(var i = 0; i < recMaxSize; i++) {
+                var targetSwitchId = rngd_recollection_mode_settings.rec_cg_set[i+1].switch_id;
+                var targetSwitchValue = $gameSwitches.value(targetSwitchId);
+                targetSwitchObjList.push({switchId: targetSwitchId, value: targetSwitchValue});
+            }
+            targetSwitchObjList.forEach(function(switchObj) {
+                $gameSystem.$$rngdGameSwitch._data[switchObj.switchId] = switchObj.value;
+            });
+            contents.switches = $gameSystem.$$rngdGameSwitch;
+
+        } else {
+            contents.switches     = $gameSwitches;
+        }
         contents.variables    = rngd_$gameVariables;
         contents.selfSwitches = rngd_$gameSelfSwitches;
         contents.actors       = rngd_$gameActors;
