@@ -224,7 +224,6 @@ rngd_$gamePlayer        = null;
                 Graphics.printError(RNGD_CONST.RNGD_RECO_PATCH_SAVE_SWITCH_ERR_001, RNGD_CONST.RNGD_RECO_PATCH_SAVE_SWITCH_ERR_001_MSG);
                 throw new Error(RNGD_CONST.RNGD_RECO_PATCH_SAVE_SWITCH_ERR_001_MSG);
             }
-            console.log("test");
             var recMaxSize = rngd_hash_size(rngd_recollection_mode_settings.rec_cg_set);
             var targetSwitchObjList = [];
             for(var i = 0; i < recMaxSize; i++) {
