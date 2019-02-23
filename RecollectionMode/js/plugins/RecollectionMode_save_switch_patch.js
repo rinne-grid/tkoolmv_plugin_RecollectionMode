@@ -8,6 +8,8 @@
 // 1.0.0 2016/12/24 公開
 // 1.1.0 2019/02/10 回想モードで利用しているスイッチのみを
 //                  セーブ対象とするためのコマンドを追加
+// 1.1.1 2019/02/23 回想スイッチ共有に対応
+//                  save_only_reco_switchエラー発生時のセーブファイル処理を変更
 //=============================================================================
 /*:ja
  * @plugindesc セーブデータに、その時点のスイッチ情報を保存することができます。
@@ -57,6 +59,9 @@ rngd_$gameMap           = null;
 rngd_$gamePlayer        = null;
 
 (function() {
+    var RNGD_CONST = {};
+    RNGD_CONST.RNGD_RECO_PATCH_SAVE_SWITCH_ERR_001_MSG = "RecoModeExt set_save_check_pointコマンドが呼ばれていません。";
+    RNGD_CONST.RNGD_RECO_PATCH_SAVE_SWITCH_ERR_001     = "RecollectionMode_save_switch_patchコマンドエラー";
     var parameters = PluginManager.parameters('RecollectionMode_save_switch_patch');
     var _Game_Interpreter_pluginCommand = Game_Interpreter.prototype.pluginCommand;
 
@@ -176,7 +181,9 @@ rngd_$gamePlayer        = null;
         } catch (e) {
             console.error(e);
             try {
-                StorageManager.remove(savefileId);
+                if(e.message !== RNGD_CONST.RNGD_RECO_PATCH_SAVE_SWITCH_ERR_001_MSG) {
+                    StorageManager.remove(savefileId);
+                }
             } catch (e2) {
             }
             return false;
@@ -204,16 +211,20 @@ rngd_$gamePlayer        = null;
     //-------------------------------------------------------------------------
     DataManager.rngd_makeSaveContentsFromTemp = function(recoSwitchOnly) {
         // A save data does not contain $gameTemp, $gameMessage, and $gameTroop.
+        if(rngd_recollection_mode_settings["share_recollection_switches"]) {
+            Scene_Recollection.setRecollectionSwitches();
+        }
+
         var contents = {};
         contents.system       = rngd_$gameSystem;
         contents.screen       = rngd_$gameScreen;
         contents.timer        = rngd_$gameTimer;
         if(recoSwitchOnly !== undefined && recoSwitchOnly !== null && recoSwitchOnly === true) {
             if($gameSystem.$$rngdGameSwitch === null || $gameSystem.$$rngdGameSwitch === undefined) {
-                Graphics.printError('RecollectionMode_save_switch_patchコマンドエラー', 'RecoModeExt set_save_check_pointコマンドが呼ばれていません。');
-                throw new Error("RecoModeExt set_save_check_pointコマンドが呼ばれていません。");
+                Graphics.printError(RNGD_CONST.RNGD_RECO_PATCH_SAVE_SWITCH_ERR_001, RNGD_CONST.RNGD_RECO_PATCH_SAVE_SWITCH_ERR_001_MSG);
+                throw new Error(RNGD_CONST.RNGD_RECO_PATCH_SAVE_SWITCH_ERR_001_MSG);
             }
-
+            console.log("test");
             var recMaxSize = rngd_hash_size(rngd_recollection_mode_settings.rec_cg_set);
             var targetSwitchObjList = [];
             for(var i = 0; i < recMaxSize; i++) {
