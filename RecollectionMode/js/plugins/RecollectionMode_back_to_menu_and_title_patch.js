@@ -12,6 +12,7 @@
 // 1.0.3 2018/04/02 メニュー経由での回想閲覧時にBGSが復帰されない問題を修正
 //                  メニュー経由での回想閲覧時に天気等の画面効果が復帰されない、または意図せず表示される問題を修正
 //                  回想メニューでキャンセルボタン押下時に前画面に戻るように改善
+// 1.0.4 2021/02/25 メニュー復帰時にプレイ時間とマップ名がリセットされてしまう問題を改善
 //===============================================================================================================
 
 /*:ja
@@ -77,7 +78,10 @@
                 actors      : JsonEx.makeDeepCopy($gameActors),
                 party       : JsonEx.makeDeepCopy($gameParty),
                 map         : JsonEx.makeDeepCopy($gameMap),
-                player      : JsonEx.makeDeepCopy($gamePlayer)
+                player      : JsonEx.makeDeepCopy($gamePlayer),
+                dataMap     : JsonEx.makeDeepCopy($dataMap),
+                dataMapInfos: JsonEx.makeDeepCopy($dataMapInfos),
+                frameCount  : Graphics.frameCount
             };
         // 1つ前のsceneがScene_Titleの場合、戻り先は通常どおりタイトルとする
         } else if(SceneManager._stack[sceneStackLen-1].name === "Scene_Title") {
@@ -105,6 +109,8 @@
             var _party          = Scene_Recollection.returnGameObjects.party;
             var _map            = Scene_Recollection.returnGameObjects.map;
             var _player         = Scene_Recollection.returnGameObjects.player;
+            var _dataMap        = Scene_Recollection.returnGameObjects.dataMap;
+            var _dataMapInfos   = Scene_Recollection.returnGameObjects.dataMapInfos;
 
             $gameSystem         = _system;
             $gameScreen         = _screen;
@@ -114,6 +120,11 @@
             $gameSelfSwitches   = _selfSwitches;
             $gameActors         = _actors;
             $gameParty          = _party;
+
+            // v1.0.4 DataMap情報及びプレイ時間情報を復帰する
+            $dataMap            = _dataMap;
+            $dataMapInfos       = _dataMapInfos;
+            Graphics.frameCount = Scene_Recollection.returnGameObjects.frameCount;
 
             // v1.0.1 $gameMapに関しては、回想前に保存したマップへの遷移で実現する
             // $gameMap            = _map;
